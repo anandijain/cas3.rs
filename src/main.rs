@@ -49,6 +49,10 @@ impl fmt::Display for Expr {
     }
 }
 
+pub fn sym(s: &str) -> Expr {
+    Expr::Sym(s.to_string())
+}
+
 fn head(expr: &Expr) -> Expr {
     match expr {
         Expr::Int(_) => Expr::Sym("Int".to_string()),
@@ -106,18 +110,6 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
         Expr::List(l) => {
             let mut prev_ne = None; // Store the previous ne here
 
-            // i think this is the part that needs to be smarter about its lookup. for instance
-            // if we fib[n_] := fib[n - 1] + fib[n - 2]
-            // SetDelayed[fib[Pattern[n, Blank[]]], Plus[fib[Plus[n, -1]], fib[Plus[n, -2]]]]]
-            // so i think simple Eq/PartialEq is not enough here
-            // fib[n] gives TerminatedEvaluation[RecursionLimit]
-            //
-            let def = ctx.vars.get(expr);
-            if let Some(val) = def {
-                println!("we out here : {}", val);
-                return evaluate(ctx, &val.clone());
-            }
-            
             if head(expr) == Expr::Sym("hold".to_string()) {
                 return expr.clone();
             }
@@ -133,6 +125,7 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
 
                 if let Some(prev) = &prev_ne {
                     if *prev == ne {
+                        // fixpoint condition
                         let h = head(&ne);
                         if h == Expr::Sym("set".to_string()) {
                             // we do this so (set (x) (x)), (x) doesnt crash
@@ -149,12 +142,24 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
                         } else if h == Expr::Sym("head".to_string()) {
                             println!("so no head??");
                             return head(&res[1]);
-                        } 
+                        }
 
                         // todo figure out how SetDelayed works
                         // else if head(&ne) == "setd" {
 
                         // }
+                        // i think this is the part that needs to be smarter about its lookup. for instance
+                        // if we fib[n_] := fib[n - 1] + fib[n - 2]
+                        // SetDelayed[fib[Pattern[n, Blank[]]], Plus[fib[Plus[n, -1]], fib[Plus[n, -2]]]]]
+                        // so i think simple Eq/PartialEq is not enough here
+                        // fib[n] gives TerminatedEvaluation[RecursionLimit]
+                        //
+                        let def = ctx.vars.get(&ne);
+                        if let Some(val) = def {
+                            println!("we out here : {}", val);
+                            return evaluate(ctx, &val.clone());
+                        }
+
                         return ne;
                     }
                 }
@@ -193,7 +198,7 @@ pub fn run() -> Result<()> {
         vars: std::collections::HashMap::new(),
     };
 
-    // startup(&mut ctx, Path::new("startup.sexp")).unwrap();
+    startup(&mut ctx, Path::new("startup.sexp")).unwrap();
 
     let mut i = 0;
 
@@ -214,7 +219,7 @@ pub fn run() -> Result<()> {
                 // let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
                 // evaluate(&mut ctx, &out_i);
 
-                println!("ctx: {:?}", ctx);
+                // println!("ctx: {:?}", ctx);
 
                 println!("(Out {i}): {}", res);
                 i += 1;

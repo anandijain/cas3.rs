@@ -9,4 +9,4 @@ https://reference.wolfram.com/language/tutorial/SomeNotesOnInternalImplementatio
 
 "In the standard evaluation procedure, the Wolfram System first evaluates the head of an expression and then evaluates each element of the expression. These elements are in general themselves expressions, to which the same evaluation procedure is recursively applied."
 
-"By default, the Wolfram Language uses a depth-first, left-to-right traversal of expressions. This means that the Wolfram Language will first evaluate the leftmost element of an expression, then the next element to its right, and so on."
+https://mathematica.stackexchange.com/questions/96/what-is-the-distinction-between-downvalues-upvalues-subvalues-and-ownvalues

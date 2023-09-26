@@ -57,10 +57,6 @@ fn head(expr: &Expr) -> Expr {
         Expr::List(lst) => {
             if let Some(first) = lst.first() {
                 first.clone()
-                // match first {
-                //     Expr::Sym(s) => s.clone(),
-                //     _ => "List".to_string(),
-                // }
             } else {
                 println!("[ERROR]: empty list isnt allowed");
                 Expr::Sym("GET_FUCKED".to_string())
@@ -121,6 +117,11 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
                 println!("we out here : {}", val);
                 return evaluate(ctx, &val.clone());
             }
+            
+            if head(expr) == Expr::Sym("hold".to_string()) {
+                return expr.clone();
+            }
+
             // this returns when we have reached fixed point
             loop {
                 let mut res = vec![];
@@ -148,7 +149,7 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
                         } else if h == Expr::Sym("head".to_string()) {
                             println!("so no head??");
                             return head(&res[1]);
-                        }
+                        } 
 
                         // todo figure out how SetDelayed works
                         // else if head(&ne) == "setd" {
@@ -204,7 +205,7 @@ pub fn run() -> Result<()> {
         match ex {
             Ok(expr) => {
                 let res = evaluate(&mut ctx, &expr);
-                println!("head: {}", head(&expr));
+                // println!("head: {}", head(&expr));
 
                 // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
 

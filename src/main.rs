@@ -1,6 +1,7 @@
 extern crate peg;
 use ordered_float;
 use rustyline::{DefaultEditor, Result};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 use std::{fmt, path::Path};
@@ -14,7 +15,7 @@ peg::parser! {
             = n:$("-"? ['0'..='9']* "." ['0'..='9']+ ) {? n.parse().map(Expr::Real).or(Err("real")) }
 
         rule symbol() -> Expr
-            = s:$(['a'..='z' | 'A'..='Z'] ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ]* ) { Expr::Sym(s.into()) }
+            = s:$(['a'..='z' | 'A'..='Z' | '?' | '$'] ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ]* ) { Expr::Sym(s.into()) }
 
         rule atom() -> Expr
             = real() / integer() / symbol()
@@ -90,6 +91,32 @@ pub fn is_atom(expr: &Expr) -> bool {
 //     }
 // }
 
+// pub fn eval(ctx: &mut Context, s: &str) -> Expr {
+//     evaluate(ctx, expr_parser::Expr(s))
+// }
+
+// fn pattern_matches(pattern: &Expr, expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+//     match (pattern, expr) {
+//         (Expr::Sym(a), Expr::Sym(b)) | (Expr::Int(a), Expr::Int(b)) | (Expr::Real(a), Expr::Real(b)) => {
+//             a == b
+//         }
+//         (Expr::List(vec![Expr::Sym(ref s), Expr::Sym(ref var), Expr::List(vec![Expr::Sym(ref blank)])]), _)
+//             if s == "pattern" && blank == "blank" => {
+//             bindings.insert(var.clone(), expr.clone());
+//             true
+//         }
+//         (Expr::List(a), Expr::List(b)) if a.len() == b.len() => {
+//             for (pa, pb) in a.iter().zip(b.iter()) {
+//                 if !pattern_matches(pa, pb, bindings) {
+//                     return false;
+//                 }
+//             }
+//             true
+//         }
+//         _ => false,
+//     }
+// }
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     vars: std::collections::HashMap<Expr, Expr>,
@@ -98,6 +125,7 @@ pub struct Context {
 pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
     // println!("evaluating {}", expr);
     match expr {
+        Expr::Int(_) | Expr::Real(_) => expr.clone(),
         Expr::Sym(_) => {
             // in the  below case we need precedence for locally bound
             // (set ((k a"_") b_) a)
@@ -108,68 +136,23 @@ pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
             }
         }
         Expr::List(l) => {
-            let mut prev_ne = None; // Store the previous ne here
-
-            if head(expr) == Expr::Sym("hold".to_string()) {
-                return expr.clone();
-            }
-
-            // this returns when we have reached fixed point
-            loop {
-                let mut res = vec![];
-                for e in l {
-                    res.push(evaluate(ctx, e));
-                }
-
-                let ne = Expr::List(res.clone());
-
-                if let Some(prev) = &prev_ne {
-                    if *prev == ne {
-                        // fixpoint condition
-                        let h = head(&ne);
-                        if h == Expr::Sym("set".to_string()) {
-                            // we do this so (set (x) (x)), (x) doesnt crash
-                            if res[1] != res[2] {
-                                ctx.vars.insert(res[1].clone(), res[2].clone());
-                            }
-                            return res[2].clone();
-                        } else if h == Expr::Sym("SameQ".to_string()) {
-                            if res[1] == res[2] {
-                                return Expr::Sym("True".to_string());
-                            } else {
-                                return Expr::Sym("False".to_string());
-                            }
-                        } else if h == Expr::Sym("head".to_string()) {
-                            println!("so no head??");
-                            return head(&res[1]);
-                        }
-
-                        // todo figure out how SetDelayed works
-                        // else if head(&ne) == "setd" {
-
-                        // }
-                        // i think this is the part that needs to be smarter about its lookup. for instance
-                        // if we fib[n_] := fib[n - 1] + fib[n - 2]
-                        // SetDelayed[fib[Pattern[n, Blank[]]], Plus[fib[Plus[n, -1]], fib[Plus[n, -2]]]]]
-                        // so i think simple Eq/PartialEq is not enough here
-                        // fib[n] gives TerminatedEvaluation[RecursionLimit]
-                        //
-                        let def = ctx.vars.get(&ne);
-                        if let Some(val) = def {
-                            println!("we out here : {}", val);
-                            return evaluate(ctx, &val.clone());
-                        }
-
-                        return ne;
-                    }
-                }
-
-                prev_ne = Some(ne); // Update prev_ne to the current ne
-            }
+            sym("fuck")
         }
-        Expr::Int(_) | Expr::Real(_) => expr.clone(),
     }
 }
+
+// pub fn setd(ctx: &mut Context, expr: &Expr) -> Expr {
+//     match expr {
+//         Expr::List(args) => {
+//             assert!(args.len() == 3);
+//             let (h, lhs, rhs) = (&args[0], &args[1], &args[2]);
+//             assert!(h == &sym("setd"));
+
+//         }
+//         _ => panic!("rust::setd takes a list of args")
+//     }
+//     let args =
+// }
 
 pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
     let file = File::open(startup_path)?;
@@ -181,7 +164,6 @@ pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
                 if let Ok(ex) = &expr_parser::Expr(&content) {
                     evaluate(ctx, ex);
                 }
-                // println!("{}", content);
             }
             Err(error) => {
                 eprintln!("Error reading a line: {:?}", error);
@@ -213,13 +195,11 @@ pub fn run() -> Result<()> {
                 // println!("head: {}", head(&expr));
 
                 // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-
-                // let in_i = expr_parser::Expr(format!("(set (In {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &in_i);
-                // let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &out_i);
-
-                // println!("ctx: {:?}", ctx);
+                let in_i = expr_parser::Expr(format!("(set (In {i}) {})", expr).as_str()).unwrap();
+                evaluate(&mut ctx, &in_i);
+                let out_i =
+                    expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
+                evaluate(&mut ctx, &out_i);
 
                 println!("(Out {i}): {}", res);
                 i += 1;
@@ -293,10 +273,6 @@ currently this crashes the interpreter because it goes into an infinite loop (no
 (set (f) (f f)
 (set (f f) (f))
 
-# bug
-(and (SameQ (plus x y) (plus x y)) False) gives (and True False) (did not eval to fixed point)
-
-
 f[x_] := x
 f[1]
 
@@ -304,6 +280,20 @@ f[1]
 (f 1) so basically wh
 
 (f (list 1))
+
+
+------
+TODO actually make testing
+
+(set (a b) c)
+(a b) == c
+(set b 1)
+(a b) == (a 1)
+
+------
+need to make
+(set x (plus x 1))
+crash the program
 
 
 */

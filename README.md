@@ -1,4 +1,4 @@
-# cas3.rs: my little mathematica
+# cas3.rs
 
 https://reference.wolfram.com/language/tutorial/EvaluationOfExpressions.html
 

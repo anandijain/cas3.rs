@@ -4,6 +4,7 @@ use rustyline::{DefaultEditor, Result};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
+use std::ops::{Deref, DerefMut};
 use std::{fmt, path::Path};
 
 peg::parser! {
@@ -50,6 +51,26 @@ impl fmt::Display for Expr {
     }
 }
 
+impl Deref for Expr {
+    type Target = Vec<Expr>;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Expr::List(vec) => vec,
+            _ => panic!("Can only deref Expr::List"),
+        }
+    }
+}
+
+impl DerefMut for Expr {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Expr::List(vec) => vec,
+            _ => panic!("Can only deref Expr::List"),
+        }
+    }
+}
+
 pub fn sym(s: &str) -> Expr {
     Expr::Sym(s.to_string())
 }
@@ -77,110 +98,184 @@ pub fn is_atom(expr: &Expr) -> bool {
     }
 }
 
-// pub fn args(expr: &Expr) -> Vec<Expr> {
-//     match expr {
-//         Expr::List(lst) => lst[1..].to_vec(),
-//         _ => vec![]
-//     }
-// }
-
-// pub fn part(expr: &Expr, n: usize) -> Expr {
-//     match expr {
-//         Expr::List(lst) => lst[n].clone(),
-//         _ => expr.clone() // this is wrong
-//     }
-// }
-
-// pub fn eval(ctx: &mut Context, s: &str) -> Expr {
-//     evaluate(ctx, expr_parser::Expr(s))
-// }
-
-// fn pattern_matches(pattern: &Expr, expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
-//     match (pattern, expr) {
-//         (Expr::Sym(a), Expr::Sym(b)) | (Expr::Int(a), Expr::Int(b)) | (Expr::Real(a), Expr::Real(b)) => {
-//             a == b
-//         }
-//         (Expr::List(vec![Expr::Sym(ref s), Expr::Sym(ref var), Expr::List(vec![Expr::Sym(ref blank)])]), _)
-//             if s == "pattern" && blank == "blank" => {
-//             bindings.insert(var.clone(), expr.clone());
-//             true
-//         }
-//         (Expr::List(a), Expr::List(b)) if a.len() == b.len() => {
-//             for (pa, pb) in a.iter().zip(b.iter()) {
-//                 if !pattern_matches(pa, pb, bindings) {
-//                     return false;
-//                 }
-//             }
-//             true
-//         }
-//         _ => false,
-//     }
-// }
-
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
-    vars: std::collections::HashMap<Expr, Expr>,
+    vars: HashMap<Expr, Expr>,
 }
 
-pub fn evaluate(ctx: &mut Context, expr: &Expr) -> Expr {
-    // println!("evaluating {}", expr);
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Context2 {
+    vars: HashMap<Expr, TableEntry>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct TableEntry {
+    own: Expr,
+    down: Expr,
+    sub: Expr,
+}
+
+impl TableEntry {
+    pub fn new() -> Self {
+        Self {
+            own: Expr::List(vec![sym("list")]),
+            down: Expr::List(vec![sym("list")]),
+            sub: Expr::List(vec![sym("list")]),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct SymTable {
+    own: HashMap<String, Expr>,
+    down: HashMap<String, Expr>,
+    sub: HashMap<String, Expr>,
+}
+
+pub fn setd(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) {}
+
+pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
+    let mut prev = None;
+    let mut ex = expr.clone();
+    loop {
+                if let Some(prev_ex) = prev {
+                    if prev_ex == ex {
+                        break;
+                    }
+                }
     match expr {
         Expr::Int(_) | Expr::Real(_) => expr.clone(),
         Expr::Sym(_) => {
-            // in the  below case we need precedence for locally bound
-            // (set ((k a"_") b_) a)
-            if let Some(val) = ctx.vars.get(expr) {
-                val.clone()
+            // i think here we are supposed to make the tableentry, if it doesn't exist
+            if let Some(te) = ctx.vars.get(expr) {
+                let ovs = &te.own;
+                // match ovs {
+                //     Expr::List(ls) => {
+                //         assert_eq!(ls.len(), 2);
+                //         let val = &ls[1];
+                //         return val.clone();
+                //     }
+                //     _ => panic!("ownvalues must be a Expr::List"),
+                // }
+                return ovs.clone();
             } else {
+                // if we ever see a symbol at all, just make an entry for it
+                ctx.vars.insert(expr.clone(), TableEntry::new());
                 expr.clone()
             }
         }
         Expr::List(l) => {
-            sym("fuck")
-        }
-    }
-}
+            stack.push(head(expr));
+            println!("{}", stack);
 
-// pub fn setd(ctx: &mut Context, expr: &Expr) -> Expr {
-//     match expr {
-//         Expr::List(args) => {
-//             assert!(args.len() == 3);
-//             let (h, lhs, rhs) = (&args[0], &args[1], &args[2]);
-//             assert!(h == &sym("setd"));
 
-//         }
-//         _ => panic!("rust::setd takes a list of args")
-//     }
-//     let args =
-// }
+                if head(&ex) == sym("setd") {
+                    let args = &l[1..];
+                    if args.len() != 2 {
+                        println!("set needs 2 args");
+                        return sym("$Failed");
+                    }
+                    let lhs = &args[0];
+                    let rhs = &args[1];
+                    match lhs {
+                        Expr::Int(_) | Expr::Real(_) => return sym("$Failed"),
 
-pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
-    let file = File::open(startup_path)?;
-    let reader = BufReader::new(file);
+                        Expr::Sym(_) => {
+                            let mut te = ctx.vars.get_mut(lhs);
+                            if let Some(te) = te {
+                                te.own = rhs.clone();
+                            } else {
+                                // if we ever see a symbol at all, just make an entry for it
+                                let mut te = TableEntry::new();
+                                te.own = rhs.clone();
+                                ctx.vars.insert(lhs.clone(), te);
+                                return sym("Null");
+                            }
+                            // te.own.push()
 
-    for line in reader.lines() {
-        match line {
-            Ok(content) => {
-                if let Ok(ex) = &expr_parser::Expr(&content) {
-                    evaluate(ctx, ex);
+                            // ctx.vars.insert(lhs.clone(), rhs.clone());
+                        }
+                        Expr::List(ls) => {
+                            println!(
+                                "lhs of set must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
+                            );
+
+                            return sym("$Failed");
+                        }
+                    }
+                    return sym("Null");
+                } else if head(&ex) == sym("set") {
+                    // remember set is holdfirst implicitly since no real attributes system
+
+                    let args = &l[1..];
+                    if args.len() != 2 {
+                        println!("set needs 2 args");
+                        return sym("$Failed");
+                    }
+                    let lhs = &args[0];
+                    let rhs = &args[1];
+                    match lhs {
+                        Expr::Int(_) | Expr::Real(_) => return sym("$Failed"),
+
+                        Expr::Sym(_) => {
+                            let mut te: Option<&TableEntry> = ctx.vars.get(lhs);
+
+                            // te.own.push()
+
+                            // ctx.vars.insert(lhs.clone(), rhs.clone());
+                        }
+                        Expr::List(ls) => {
+                            println!(
+                                "lhs of set must be a symbol. this is Todo to set downvalues "
+                            );
+                            return sym("$Failed");
+                        }
+                    }
+                } else if head(&ex) == sym("hold") {
+                    break;
                 }
+                let mut evaluated_args = vec![];
+                for ex in l {
+                    let evaluated_ex = evaluate(stack, ctx, ex);
+                    evaluated_args.push(evaluated_ex);
+                }
+                prev = Some(ex);
+                ex = Expr::List(evaluated_args);
+                stack.pop();
             }
-            Err(error) => {
-                eprintln!("Error reading a line: {:?}", error);
-            }
+            ex
         }
     }
-
-    Ok(())
 }
+
+// pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
+//     let file = File::open(startup_path)?;
+//     let reader = BufReader::new(file);
+
+//     for line in reader.lines() {
+//         match line {
+//             Ok(content) => {
+//                 if let Ok(ex) = &expr_parser::Expr(&content) {
+//                     let mut stack = Expr::List(vec![]);
+//                     evaluate(&mut stack, ctx, ex);
+//                 }
+//             }
+//             Err(error) => {
+//                 eprintln!("Error reading a line: {:?}", error);
+//             }
+//         }
+//     }
+
+//     Ok(())
+// }
 
 pub fn run() -> Result<()> {
     let mut rl = DefaultEditor::new()?;
-    let mut ctx = Context {
-        vars: std::collections::HashMap::new(),
+    let mut ctx = Context2 {
+        vars: HashMap::new(),
     };
 
-    startup(&mut ctx, Path::new("startup.sexp")).unwrap();
+    // startup(&mut ctx, Path::new("startup.sexp")).unwrap();
 
     let mut i = 0;
 
@@ -191,15 +286,16 @@ pub fn run() -> Result<()> {
         let ex = expr_parser::Expr(&line);
         match ex {
             Ok(expr) => {
-                let res = evaluate(&mut ctx, &expr);
+                let mut stack = Expr::List(vec![]);
+                let res = evaluate(&mut stack, &mut ctx, &expr);
                 // println!("head: {}", head(&expr));
 
                 // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                let in_i = expr_parser::Expr(format!("(set (In {i}) {})", expr).as_str()).unwrap();
-                evaluate(&mut ctx, &in_i);
-                let out_i =
-                    expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
-                evaluate(&mut ctx, &out_i);
+                // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
+                // evaluate(&mut ctx, &in_i);
+                // let out_i =
+                //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
+                // evaluate(&mut ctx, &out_i);
 
                 println!("(Out {i}): {}", res);
                 i += 1;
@@ -294,6 +390,39 @@ TODO actually make testing
 need to make
 (set x (plus x 1))
 crash the program
+and
+(setd x (plus x 1)) not
+but (setd x (plus x 1)), (x) should crash the program
+
+
+
+f[x_]:=g[y_]:=y
+f[1] === Null # True
+but note that if you try to call g before f, then g is undefined
+so
+ff[x_]:=gg[y_]:=y
+gg[1] # gives gg[1]
+but then
+ff[1]
+gg[1] # now gives 1
+
+also note that
+x=1
+x=2
+works because Set is HoldFirst
+
+
+https://mathematica.stackexchange.com/questions/176732/can-a-symbol-have-more-than-one-ownvalue
+i will keep TableEntry.own as a list expr, but since I am not going to do conditional evaluation, it will only have one element
+if set manually by the user, through OwnValues[x] = ..., i panic if more than one
+
+one interesting thing is how to set Set attributes to HoldFirst and Setd before calling Set and Setd.
+maybe have to manually put in those DownValues of Attributes manually in rust and not in startup
+can also just hardcode it in evaluate to never evaluate the first argument of Set and the rest
+
+
+apply just replaces list with arg[1]
+apply[f, {a, b, c}] # f[a, b, c]
 
 
 */

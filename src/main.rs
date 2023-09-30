@@ -138,114 +138,79 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut prev = None;
     let mut ex = expr.clone();
     loop {
-                if let Some(prev_ex) = prev {
-                    if prev_ex == ex {
-                        break;
-                    }
-                }
-    match expr {
-        Expr::Int(_) | Expr::Real(_) => expr.clone(),
-        Expr::Sym(_) => {
-            // i think here we are supposed to make the tableentry, if it doesn't exist
-            if let Some(te) = ctx.vars.get(expr) {
-                let ovs = &te.own;
-                // match ovs {
-                //     Expr::List(ls) => {
-                //         assert_eq!(ls.len(), 2);
-                //         let val = &ls[1];
-                //         return val.clone();
-                //     }
-                //     _ => panic!("ownvalues must be a Expr::List"),
-                // }
-                return ovs.clone();
-            } else {
-                // if we ever see a symbol at all, just make an entry for it
-                ctx.vars.insert(expr.clone(), TableEntry::new());
-                expr.clone()
+        if let Some(prev_ex) = &prev {
+            if prev_ex == &ex {
+                break;
             }
         }
-        Expr::List(l) => {
-            stack.push(head(expr));
-            println!("{}", stack);
-
-
+        match &ex {
+            Expr::Int(_) | Expr::Real(_) => {
+                prev = Some(ex.clone());
+                ex = ex.clone();
+            }
+            Expr::Sym(_) => {
+                if let Some(te) = ctx.vars.get(&ex) {
+                    prev = Some(ex.clone());
+                    ex = te.own.clone();
+                } else {
+                    ctx.vars.insert(ex.clone(), TableEntry::new());
+                    prev = Some(ex.clone());
+                    ex = ex.clone();
+                }
+            }
+            Expr::List(l) => {
                 if head(&ex) == sym("setd") {
                     let args = &l[1..];
                     if args.len() != 2 {
-                        println!("set needs 2 args");
-                        return sym("$Failed");
-                    }
-                    let lhs = &args[0];
-                    let rhs = &args[1];
-                    match lhs {
-                        Expr::Int(_) | Expr::Real(_) => return sym("$Failed"),
-
-                        Expr::Sym(_) => {
-                            let mut te = ctx.vars.get_mut(lhs);
-                            if let Some(te) = te {
-                                te.own = rhs.clone();
-                            } else {
-                                // if we ever see a symbol at all, just make an entry for it
-                                let mut te = TableEntry::new();
-                                te.own = rhs.clone();
-                                ctx.vars.insert(lhs.clone(), te);
-                                return sym("Null");
+                        println!("setd needs 2 args");
+                        prev = Some(ex.clone());
+                        ex = sym("$Failed");
+                    } else {
+                        let lhs = &args[0];
+                        let rhs = &args[1];
+                        match lhs {
+                            Expr::Int(_) | Expr::Real(_) => {
+                                prev = Some(ex.clone());
+                                ex = sym("$Failed");
                             }
-                            // te.own.push()
-
-                            // ctx.vars.insert(lhs.clone(), rhs.clone());
-                        }
-                        Expr::List(ls) => {
-                            println!(
-                                "lhs of set must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
-                            );
-
-                            return sym("$Failed");
+                            Expr::Sym(_) => {
+                                let mut te = ctx.vars.get_mut(lhs);
+                                if let Some(te) = te {
+                                    te.own = rhs.clone();
+                                } else {
+                                    let mut te = TableEntry::new();
+                                    te.own = rhs.clone();
+                                    ctx.vars.insert(lhs.clone(), te);
+                                }
+                                prev = Some(ex.clone());
+                                ex = sym("Null");
+                            }
+                            Expr::List(ls) => {
+                                println!(
+                                    "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
+                                );
+                                prev = Some(ex.clone());
+                                ex = sym("$Failed");
+                            }
                         }
                     }
-                    return sym("Null");
                 } else if head(&ex) == sym("set") {
-                    // remember set is holdfirst implicitly since no real attributes system
-
-                    let args = &l[1..];
-                    if args.len() != 2 {
-                        println!("set needs 2 args");
-                        return sym("$Failed");
-                    }
-                    let lhs = &args[0];
-                    let rhs = &args[1];
-                    match lhs {
-                        Expr::Int(_) | Expr::Real(_) => return sym("$Failed"),
-
-                        Expr::Sym(_) => {
-                            let mut te: Option<&TableEntry> = ctx.vars.get(lhs);
-
-                            // te.own.push()
-
-                            // ctx.vars.insert(lhs.clone(), rhs.clone());
-                        }
-                        Expr::List(ls) => {
-                            println!(
-                                "lhs of set must be a symbol. this is Todo to set downvalues "
-                            );
-                            return sym("$Failed");
-                        }
-                    }
+                    // ... The rest of your logic for `set`, `hold`, etc.
                 } else if head(&ex) == sym("hold") {
                     break;
+                } else {
+                    let mut evaluated_args = vec![];
+                    for ex in l {
+                        let evaluated_ex = evaluate(stack, ctx, ex);
+                        evaluated_args.push(evaluated_ex);
+                    }
+                    prev = Some(ex.clone());
+                    ex = Expr::List(evaluated_args);
                 }
-                let mut evaluated_args = vec![];
-                for ex in l {
-                    let evaluated_ex = evaluate(stack, ctx, ex);
-                    evaluated_args.push(evaluated_ex);
-                }
-                prev = Some(ex);
-                ex = Expr::List(evaluated_args);
-                stack.pop();
             }
-            ex
         }
     }
+    ex
 }
 
 // pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {

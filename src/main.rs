@@ -132,7 +132,28 @@ pub struct SymTable {
     sub: HashMap<String, Expr>,
 }
 
-pub fn setd(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) {}
+fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
+    match lhs {
+        Expr::Int(_) | Expr::Real(_) => sym("$Failed"),
+        Expr::Sym(_) => {
+            let mut te = ctx.vars.get_mut(lhs);
+            if let Some(te) = te {
+                te.own = rhs.clone();
+            } else {
+                let mut te = TableEntry::new();
+                te.own = rhs.clone();
+                ctx.vars.insert(lhs.clone(), te);
+            }
+            sym("Null")
+        }
+        Expr::List(ls) => {
+            println!(
+                "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
+            );
+            sym("$Failed")
+        }
+    }
+}
 
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut prev = None;
@@ -168,34 +189,26 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     } else {
                         let lhs = &args[0];
                         let rhs = &args[1];
-                        match lhs {
-                            Expr::Int(_) | Expr::Real(_) => {
-                                prev = Some(ex.clone());
-                                ex = sym("$Failed");
-                            }
-                            Expr::Sym(_) => {
-                                let mut te = ctx.vars.get_mut(lhs);
-                                if let Some(te) = te {
-                                    te.own = rhs.clone();
-                                } else {
-                                    let mut te = TableEntry::new();
-                                    te.own = rhs.clone();
-                                    ctx.vars.insert(lhs.clone(), te);
-                                }
-                                prev = Some(ex.clone());
-                                ex = sym("Null");
-                            }
-                            Expr::List(ls) => {
-                                println!(
-                                    "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
-                                );
-                                prev = Some(ex.clone());
-                                ex = sym("$Failed");
-                            }
-                        }
+                        prev = Some(ex.clone());
+                        ex = setd(ctx, lhs, rhs);
                     }
                 } else if head(&ex) == sym("set") {
-                    // ... The rest of your logic for `set`, `hold`, etc.
+                    let args = &l[1..];
+                    if args.len() != 2 {
+                        println!("set needs 2 args");
+                        prev = Some(ex.clone());
+                        ex = sym("$Failed");
+                    } else {
+                        let lhs = &args[0];
+                        let rhs = &args[1];
+                        // Call setd with the original rhs
+                        setd(ctx, lhs, rhs);
+                        // Evaluate lhs
+                        let lhs_evaluated = evaluate(stack, ctx, lhs);
+                        // Call setd again with the evaluated lhs
+                        prev = Some(ex.clone());
+                        ex = setd(ctx, lhs, &lhs_evaluated);
+                    }
                 } else if head(&ex) == sym("hold") {
                     break;
                 } else {

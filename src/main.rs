@@ -207,7 +207,8 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         let lhs_evaluated = evaluate(stack, ctx, lhs);
                         // Call setd again with the evaluated lhs
                         prev = Some(ex.clone());
-                        ex = setd(ctx, lhs, &lhs_evaluated);
+                        setd(ctx, lhs, &lhs_evaluated);
+                        ex = lhs_evaluated
                     }
                 } else if head(&ex) == sym("hold") {
                     break;

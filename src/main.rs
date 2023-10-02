@@ -116,7 +116,7 @@ pub struct Context2 {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct TableEntry {
-    own: Expr,
+    own: Option<Expr>,
     down: Expr,
     sub: Expr,
 }
@@ -124,37 +124,55 @@ pub struct TableEntry {
 impl TableEntry {
     pub fn new() -> Self {
         Self {
-            own: Expr::List(vec![sym("list")]),
+            own: None,
             down: Expr::List(vec![sym("list")]),
             sub: Expr::List(vec![sym("list")]),
         }
     }
 }
 
-fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
-    match lhs {
-        Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => sym("$Failed"),
-        Expr::Sym(_) => {
-            let mut te = ctx.vars.get_mut(lhs);
-            if let Some(te) = te {
-                println!("setting {:?} to {:?}", lhs, rhs);
-                te.own = rhs.clone();
-                println!("ctx: {:?}", ctx.vars.get_mut(lhs).unwrap().own);
-            } else {
-                let mut te = TableEntry::new();
-                te.own = rhs.clone();
-                ctx.vars.insert(lhs.clone(), te);
-            }
-            sym("Null")
+// fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
+//     match lhs {
+//         Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => sym("$Failed"),
+//         Expr::Sym(_) => {
+//             let mut te = ctx.vars.get_mut(lhs);
+//             if let Some(te) = te {
+//                 println!("setting {:?} to {:?}", lhs, rhs);
+//                 te.own = rhs.clone();
+//                 println!("ctx: {:?}", ctx.vars.get_mut(lhs).unwrap().own);
+//             } else {
+//                 let mut te = TableEntry::new();
+//                 te.own = rhs.clone();
+//                 ctx.vars.insert(lhs.clone(), te);
+//             }
+//             sym("Null")
+//         }
+//         Expr::List(ls) => {
+//             println!(
+//                 "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
+//             );
+//             sym("$Failed")
+//         }
+//     }
+// }
+
+pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
+    let te = ctx.vars.get(&sym);
+    if let Some(te) = te {
+        let rule = te.own.clone();
+        if let Some(rule) = rule {
+            Some(rule[2].clone())
+        } else {
+            None
         }
-        Expr::List(ls) => {
-            println!(
-                "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
-            );
-            sym("$Failed")
-        }
+        // for now, since I'm only allowing a single ownvalue maybe im not going to do the whole handling of HoldPattern[lhs] :> rhs
+        // where i actually take sym and do sym /. OwnValues[sym]
+        // apply_rule()
+    } else {
+        None
     }
 }
+
 
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut prev = None;
@@ -167,8 +185,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
         }
         match &ex {
             Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
-                prev = Some(ex.clone());
-                ex = ex.clone();
+                return ex.clone();
             }
             Expr::Sym(_) => {
                 prev = Some(ex.clone());
@@ -207,6 +224,29 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     }
                 } else if head(&ex) == sym("hold") {
                     break;
+                } else if head(&ex) == sym("parse") {
+                    if ex.len() != 2 {
+                        ex = sym("$Failed");
+                        prev = Some(ex.clone());
+                    } else {
+                        let arg = &ex[1];
+                        match arg {
+                            Expr::Str(s) => {
+                                let parsed = expr_parser::Expr(&s);
+                                match parsed {
+                                    Ok(parsed) => {
+                                        ex = parsed;
+                                        prev = Some(ex.clone());
+                                    }
+                                    Err(_) => {
+                                        ex = sym("$Failed");
+                                        prev = Some(ex.clone());
+                                    }
+                                }
+                            }
+                            _ => println!("parse needs a string as an argument"),
+                        }
+                    }
                 } else {
                     let mut evaluated_args = vec![];
                     for ex in l {

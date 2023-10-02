@@ -125,20 +125,15 @@ impl TableEntry {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct SymTable {
-    own: HashMap<String, Expr>,
-    down: HashMap<String, Expr>,
-    sub: HashMap<String, Expr>,
-}
-
 fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
     match lhs {
         Expr::Int(_) | Expr::Real(_) => sym("$Failed"),
         Expr::Sym(_) => {
             let mut te = ctx.vars.get_mut(lhs);
             if let Some(te) = te {
+                println!("setting {:?} to {:?}", lhs, rhs);
                 te.own = rhs.clone();
+                println!("ctx: {:?}", ctx.vars.get_mut(lhs).unwrap().own);
             } else {
                 let mut te = TableEntry::new();
                 te.own = rhs.clone();
@@ -171,9 +166,25 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             }
             Expr::Sym(_) => {
                 if let Some(te) = ctx.vars.get(&ex) {
-                    prev = Some(ex.clone());
-                    ex = te.own.clone();
+                    let own = &te.own;
+                    // own.len()
+                    // println!("own: {:?}, len: {}", own, own.len());
+                    match own {
+                        
+                    }
+                    if own.len() == 1 {
+                        prev = Some(ex.clone());
+                        // ex = own[0].clone();
+                    } else {
+                        prev = Some(ex.clone());
+                        ex = te.own.clone();
+                        println!("ex: {:?}", ex);
+                    }
+                    // println!("ctx: {:?}", ctx);
                 } else {
+                    // we can create the tableentry here and not initialize.
+                    // but we want to leave the OwnValues as empty list, which means that we return the symbol itself
+
                     ctx.vars.insert(ex.clone(), TableEntry::new());
                     prev = Some(ex.clone());
                     ex = ex.clone();
@@ -215,6 +226,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 } else {
                     let mut evaluated_args = vec![];
                     for ex in l {
+                        println!("ex: {:?}", ex);
                         let evaluated_ex = evaluate(stack, ctx, ex);
                         evaluated_args.push(evaluated_ex);
                     }

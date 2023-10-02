@@ -14,3 +14,21 @@ https://mathematica.stackexchange.com/questions/96/what-is-the-distinction-betwe
 https://mathematica.stackexchange.com/questions/192278/is-there-a-defined-priority-for-pattern-matching
 https://reference.wolfram.com/language/tutorial/TransformationRulesAndDefinitions.html#26982
 
+https://reference.wolfram.com/language/tutorial/Evaluation.html
+
+
+this links to a book that describes the evaluation order (section 7.1.3)
+https://mathematica.stackexchange.com/questions/16485/are-you-interested-in-purchasing-david-wagners-power-programming-with-mathemat
+
+
+combinators 
+https://writings.stephenwolfram.com/2020/12/combinators-a-centennial-view/
+https://writings.stephenwolfram.com/2020/12/combinators-and-the-story-of-computation/
+
+```mathematica
+k[x_][y_] := x
+s[x_][y_][z_] := x[z][y[z]]
+
+or 
+EXPR //. {s[x_][y_][z_] -> x[z][y[z]], k[x_][y_] -> x}
+```

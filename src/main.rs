@@ -18,8 +18,11 @@ peg::parser! {
         rule symbol() -> Expr
             = s:$(['a'..='z' | 'A'..='Z' | '?' | '$'] ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ]* ) { Expr::Sym(s.into()) }
 
+        rule string() -> Expr
+            = "\"" s:$((!['"'][_])* ) "\"" { Expr::Str(s.into()) }
+
         rule atom() -> Expr
-            = real() / integer() / symbol()
+            = real() / integer() / symbol() / string()
 
         rule list() -> Expr
             = "(" l:Expr() ** " " ")" { Expr::List(l) }
@@ -34,6 +37,7 @@ pub enum Expr {
     Int(i64),
     Real(ordered_float::NotNan<f64>),
     Sym(String),
+    Str(String),
     List(Vec<Expr>),
 }
 
@@ -43,6 +47,7 @@ impl fmt::Display for Expr {
             Expr::Int(i) => write!(f, "{}", i),
             Expr::Real(r) => write!(f, "{}", r),
             Expr::Sym(s) => write!(f, "{}", s),
+            Expr::Str(s) => write!(f, "\"{}\"", s),
             Expr::List(lst) => {
                 let str_list: Vec<String> = lst.iter().map(|x| x.to_string()).collect();
                 write!(f, "({})", str_list.join(" "))
@@ -80,6 +85,7 @@ fn head(expr: &Expr) -> Expr {
         Expr::Int(_) => Expr::Sym("Int".to_string()),
         Expr::Real(_) => Expr::Sym("Real".to_string()),
         Expr::Sym(_) => Expr::Sym("Sym".to_string()),
+        Expr::Str(_) => Expr::Sym("Str".to_string()),
         Expr::List(lst) => {
             if let Some(first) = lst.first() {
                 first.clone()
@@ -127,7 +133,7 @@ impl TableEntry {
 
 fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
     match lhs {
-        Expr::Int(_) | Expr::Real(_) => sym("$Failed"),
+        Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => sym("$Failed"),
         Expr::Sym(_) => {
             let mut te = ctx.vars.get_mut(lhs);
             if let Some(te) = te {
@@ -160,35 +166,13 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             }
         }
         match &ex {
-            Expr::Int(_) | Expr::Real(_) => {
+            Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
                 prev = Some(ex.clone());
                 ex = ex.clone();
             }
             Expr::Sym(_) => {
-                if let Some(te) = ctx.vars.get(&ex) {
-                    let own = &te.own;
-                    // own.len()
-                    // println!("own: {:?}, len: {}", own, own.len());
-                    match own {
-                        
-                    }
-                    if own.len() == 1 {
-                        prev = Some(ex.clone());
-                        // ex = own[0].clone();
-                    } else {
-                        prev = Some(ex.clone());
-                        ex = te.own.clone();
-                        println!("ex: {:?}", ex);
-                    }
-                    // println!("ctx: {:?}", ctx);
-                } else {
-                    // we can create the tableentry here and not initialize.
-                    // but we want to leave the OwnValues as empty list, which means that we return the symbol itself
-
-                    ctx.vars.insert(ex.clone(), TableEntry::new());
-                    prev = Some(ex.clone());
-                    ex = ex.clone();
-                }
+                prev = Some(ex.clone());
+                ex = ex.clone();
             }
             Expr::List(l) => {
                 if head(&ex) == sym("setd") {

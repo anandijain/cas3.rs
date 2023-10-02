@@ -105,11 +105,6 @@ pub fn is_atom(expr: &Expr) -> bool {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Context {
-    vars: HashMap<Expr, Expr>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context2 {
     vars: HashMap<Expr, TableEntry>,
 }
@@ -131,31 +126,6 @@ impl TableEntry {
     }
 }
 
-// fn setd(ctx: &mut Context2, lhs: &Expr, rhs: &Expr) -> Expr {
-//     match lhs {
-//         Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => sym("$Failed"),
-//         Expr::Sym(_) => {
-//             let mut te = ctx.vars.get_mut(lhs);
-//             if let Some(te) = te {
-//                 println!("setting {:?} to {:?}", lhs, rhs);
-//                 te.own = rhs.clone();
-//                 println!("ctx: {:?}", ctx.vars.get_mut(lhs).unwrap().own);
-//             } else {
-//                 let mut te = TableEntry::new();
-//                 te.own = rhs.clone();
-//                 ctx.vars.insert(lhs.clone(), te);
-//             }
-//             sym("Null")
-//         }
-//         Expr::List(ls) => {
-//             println!(
-//                 "lhs of setd must be a symbol. this is Todo to set downvalues. ie (setd (f x) 1)"
-//             );
-//             sym("$Failed")
-//         }
-//     }
-// }
-
 pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     let te = ctx.vars.get(&sym);
     if let Some(te) = te {
@@ -173,94 +143,51 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     }
 }
 
-
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
-    let mut prev = None;
     let mut ex = expr.clone();
     loop {
-        if let Some(prev_ex) = &prev {
-            if prev_ex == &ex {
-                break;
-            }
-        }
-        match &ex {
+        match ex {
             Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
-                return ex.clone();
+                return ex;
             }
-            Expr::Sym(_) => {
-                prev = Some(ex.clone());
-                ex = ex.clone();
-            }
-            Expr::List(l) => {
-                if head(&ex) == sym("setd") {
-                    let args = &l[1..];
-                    if args.len() != 2 {
-                        println!("setd needs 2 args");
-                        prev = Some(ex.clone());
-                        ex = sym("$Failed");
-                    } else {
-                        let lhs = &args[0];
-                        let rhs = &args[1];
-                        prev = Some(ex.clone());
-                        ex = setd(ctx, lhs, rhs);
-                    }
-                } else if head(&ex) == sym("set") {
-                    let args = &l[1..];
-                    if args.len() != 2 {
-                        println!("set needs 2 args");
-                        prev = Some(ex.clone());
-                        ex = sym("$Failed");
-                    } else {
-                        let lhs = &args[0];
-                        let rhs = &args[1];
-                        // Call setd with the original rhs
-                        setd(ctx, lhs, rhs);
-                        // Evaluate lhs
-                        let lhs_evaluated = evaluate(stack, ctx, lhs);
-                        // Call setd again with the evaluated lhs
-                        prev = Some(ex.clone());
-                        setd(ctx, lhs, &lhs_evaluated);
-                        ex = lhs_evaluated
-                    }
-                } else if head(&ex) == sym("hold") {
-                    break;
-                } else if head(&ex) == sym("parse") {
-                    if ex.len() != 2 {
-                        ex = sym("$Failed");
-                        prev = Some(ex.clone());
-                    } else {
-                        let arg = &ex[1];
-                        match arg {
-                            Expr::Str(s) => {
-                                let parsed = expr_parser::Expr(&s);
-                                match parsed {
-                                    Ok(parsed) => {
-                                        ex = parsed;
-                                        prev = Some(ex.clone());
-                                    }
-                                    Err(_) => {
-                                        ex = sym("$Failed");
-                                        prev = Some(ex.clone());
-                                    }
-                                }
-                            }
-                            _ => println!("parse needs a string as an argument"),
-                        }
-                    }
+            Expr::Sym(ref s) => {
+                if let Some(rule) = get_ownvalue(ctx, sym(&s)) {
+                    ex = rule;
                 } else {
-                    let mut evaluated_args = vec![];
-                    for ex in l {
-                        println!("ex: {:?}", ex);
-                        let evaluated_ex = evaluate(stack, ctx, ex);
-                        evaluated_args.push(evaluated_ex);
-                    }
-                    prev = Some(ex.clone());
-                    ex = Expr::List(evaluated_args);
+                    return ex;
                 }
+            }
+            Expr::List(ref ls) => {
+                // 4)
+
+                let h = ls.first().unwrap();
+                // 5)
+                let nh = evaluate(stack, ctx, h);
+                let mut evaluated_args = vec![];
+                for p in &ls[1..] {
+                    // skipping attributes stuff
+                    evaluated_args.push(evaluate(stack, ctx, p));
+                }
+                // skipping attributes (8-11)
+                // skipping upvalues (12-13)
+
+                match nh {
+                    // we dont need to panic here
+                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
+                    Expr::Sym(ref s ) => {
+                        apply_downvalues(stack, ctx, nh, &evaluated_args)
+                    }
+                    Expr::List(ref head_args) => {
+                        apply_subvalues(stack, ctx, nh, &evaluated_args)
+                    }
+                }
+                
+                // 14, i'm not putting symbols in a context yet, so there is no distinction between user defined symbols and built in symbols
+                ex = Expr::List(std::iter::once(nh).chain(evaluated_args).collect());
+
             }
         }
     }
-    ex
 }
 
 // pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {

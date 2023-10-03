@@ -143,51 +143,83 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     }
 }
 
+pub fn get_downvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
+    let te = ctx.vars.get(&sym);
+    if let Some(te) = te {
+        let rule = te.down.clone();
+        if let Expr::List(rule) = rule {
+            Some(Expr::List(rule.to_vec()))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
+pub fn get_subvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
+    let te = ctx.vars.get(&sym);
+    if let Some(te) = te {
+        let rule = te.sub.clone();
+        if let Expr::List(rule) = rule {
+            Some(Expr::List(rule.to_vec()))
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+}
+
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
+    let mut last_ex = None;
+
     loop {
-        match ex {
+        if Some(&ex) == last_ex.as_ref() {
+            // If the expression hasn't changed, break the loop.
+            break;
+        }
+
+        last_ex = Some(ex.clone());
+
+        match &ex {
             Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
-                return ex;
+                break;
             }
             Expr::Sym(ref s) => {
-                if let Some(rule) = get_ownvalue(ctx, sym(&s)) {
+                if let Some(rule) = get_ownvalue(ctx, sym(s)) {
                     ex = rule;
                 } else {
-                    return ex;
+                    break;
                 }
             }
             Expr::List(ref ls) => {
-                // 4)
-
                 let h = ls.first().unwrap();
-                // 5)
                 let nh = evaluate(stack, ctx, h);
                 let mut evaluated_args = vec![];
+
                 for p in &ls[1..] {
-                    // skipping attributes stuff
                     evaluated_args.push(evaluate(stack, ctx, p));
                 }
-                // skipping attributes (8-11)
-                // skipping upvalues (12-13)
 
-                match nh {
-                    // we dont need to panic here
-                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
-                    Expr::Sym(ref s ) => {
-                        apply_downvalues(stack, ctx, nh, &evaluated_args)
-                    }
-                    Expr::List(ref head_args) => {
-                        apply_subvalues(stack, ctx, nh, &evaluated_args)
-                    }
-                }
-                
-                // 14, i'm not putting symbols in a context yet, so there is no distinction between user defined symbols and built in symbols
-                ex = Expr::List(std::iter::once(nh).chain(evaluated_args).collect());
+                // ex = match nh {
+                //     // we dont need to panic here "abc"[foo] doesn't
+                //     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
+                //     Expr::Sym(ref s) => apply_downvalues(stack, ctx, nh, &evaluated_args),
+                //     Expr::List(ref head_args) => apply_subvalues(stack, ctx, nh, &evaluated_args),
+                // };
 
+                ex = Expr::List(
+                    std::iter::once(nh.clone())
+                        .chain(evaluated_args.clone())
+                        .collect(),
+                );
             }
         }
     }
+
+    ex
 }
 
 // pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
@@ -247,13 +279,71 @@ pub fn run() -> Result<()> {
     } // loop
 }
 
+fn match_pattern(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+    match (expr, pattern_expr) {
+        (Expr::List(e_list), Expr::List(p_list)) => {
+            if p_list.len() == 0 || e_list.len() != p_list.len() {
+                return false;
+            }
+            for (e, p) in e_list.iter().zip(p_list.iter()) {
+                if !match_pattern(e, p, bindings) {
+                    return false;
+                }
+            }
+            true
+        }
+        (_, Expr::List(p_list)) => {
+            if let Expr::Sym(ref p_head) = p_list[0] {
+                if p_head == "pattern" {
+                    let name = p_list[1].clone().to_string();
+                    let pattern = &p_list[2];
+                    if let Some(existing_binding) = bindings.get(&name) {
+                        return expr == existing_binding;
+                    }
+                    if match_pattern(expr, pattern, bindings) {
+                        bindings.insert(name, expr.clone());
+                        return true;
+                    }
+                } else if p_head == "blank" {
+                    if p_list.len() == 2 {
+                        println!("p_list: {:?}", p_list);
+                        let required_head = &p_list[1];
+                        if head(expr) == *required_head {
+                            return true;
+                        }
+                    } else if p_list.len() == 1 {
+                        return true;
+                    }
+                }
+            }
+            false
+        }
+        (Expr::Sym(e), Expr::Sym(p)) => e == p,
+        (Expr::Int(e), Expr::Int(p)) => e == p,
+        (Expr::Real(e), Expr::Real(p)) => e == p,
+        (Expr::Str(e), Expr::Str(p)) => e == p,
+        _ => false,
+    }
+}
+
 fn main() -> Result<()> {
     let result = expr_parser::Expr("(42 foo (1.0 -2) (nested list))");
     let result2 = expr_parser::Expr("(42 foo (1.0 -2) (nested list))");
 
     assert_eq!(result, result2);
 
-    run()?;
+    // run()?;
+
+    let mut bindings = HashMap::new();
+    let expr = expr_parser::Expr("1").unwrap();
+    let pattern = expr_parser::Expr("(blank)").unwrap();
+    let pattern = expr_parser::Expr("(blank Int)").unwrap();
+    let pattern = expr_parser::Expr("(pattern x (blank))").unwrap();
+    let pattern = expr_parser::Expr("(pattern x (blank Int))").unwrap();
+    let pattern = expr_parser::Expr("(pattern x (blank Sym))").unwrap();
+    let does_match = match_pattern(&expr, &pattern2, &mut bindings);
+    println!("does_match: {} with bindings {:?}", does_match, bindings);
+
     Ok(())
 }
 

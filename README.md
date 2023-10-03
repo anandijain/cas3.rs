@@ -32,3 +32,9 @@ s[x_][y_][z_] := x[z][y[z]]
 or 
 EXPR //. {s[x_][y_][z_] -> x[z][y[z]], k[x_][y_] -> x}
 ```
+
+random todo - not critical for combinator reduction
+
+improve parser (whitespace and EOF robustness) - infix/m-expr if im feeling naughty
+arb numerics- switch to rug/gmp for all number types 
+string escaping 

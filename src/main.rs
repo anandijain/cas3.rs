@@ -209,6 +209,9 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 //     Expr::Sym(ref s) => apply_downvalues(stack, ctx, nh, &evaluated_args),
                 //     Expr::List(ref head_args) => apply_subvalues(stack, ctx, nh, &evaluated_args),
                 // };
+
+                // this corresponds to step 15 in Wagner's main eval loop section
+                // where we apply internal/builtin down and subvalues
                 if nh == sym("matchq") {
                     assert!(evaluated_args.len() == 2);
                     ex = Expr::Sym(format!(
@@ -221,8 +224,24 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     ex = Expr::Sym(format!("{}", all_same));
                 } else if nh == sym("replace") {
                     ex = replace(&evaluated_args[0], &evaluated_args[1]);
+                } else if nh == sym("replace_all") {
+                    ex = replace_all(&evaluated_args[0], &evaluated_args[1]);
                 } else if nh == sym("head") {
                     ex = head(&evaluated_args[0]);
+                } else if nh == sym("parse") {
+                    match evaluated_args[0] {
+                        Expr::Str(ref s) => {
+                            let pex = expr_parser::Expr(s);
+                            match pex {
+                                Ok(expr) => ex = expr,
+                                Err(err) => {
+                                    println!("Failed to parse: {}", err);
+                                    return sym("$Failed");
+                                }
+                            }
+                        }
+                        _ => println!("parse takes a string"),
+                    }
                 } else {
                     ex = Expr::List(
                         std::iter::once(nh.clone())
@@ -346,7 +365,7 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
                     }
                 } else if p_head == "blank" {
                     if p_list.len() == 2 {
-                        println!("p_list: {:?}", p_list);
+                        // println!("p_list: {:?}", p_list);
                         let required_head = &p_list[1];
                         if head(expr) == *required_head {
                             return true;
@@ -366,24 +385,47 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
     }
 }
 
-/// todo, i need to check semantics of (replace expr (list rules...))
-pub fn replace(expr: &Expr, rule: &Expr) -> Expr {
-    let mut bindings = HashMap::new();
-    println!("rule: {}", rule);
-    // not sure if this is necesary but ok
-    assert!(head(rule) == sym("rule"));
-    if is_match(expr, &rule[1], &mut bindings) {
-        
-        let mut new_expr = rule[2].clone();
-        for (name, binding) in bindings {
-            new_expr = replace(
-                &new_expr,
-                &Expr::List(vec![sym("rule"), sym(&name), binding]),
-            );
-        }
-        new_expr
+pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
+    // If it's a single rule, make it a list containing that rule
+    let rules_list = if head(rules) == sym("rule") {
+        vec![rules.clone()]
     } else {
-        expr.clone()
+        assert_eq!(head(rules), sym("list"));
+        // Assumes that 'rules' is a list of rules; otherwise, you might want to validate this.
+        rules.clone()[1..].to_vec()
+    };
+
+    for rule in rules_list {
+        let mut bindings = HashMap::new();
+        assert!(head(&rule) == sym("rule"));
+        if is_match(expr, &rule[1], &mut bindings) {
+            let mut new_expr = rule[2].clone();
+            for (name, binding) in bindings {
+                new_expr = replace(
+                    &new_expr,
+                    &Expr::List(vec![sym("rule"), sym(&name), binding]),
+                );
+            }
+            return new_expr;
+        }
+    }
+    expr.clone()
+}
+
+pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
+    match expr {
+        // Base cases: Symbol, Int, Real, and Str types
+        Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => replace(expr, rules),
+
+        // Recursive case: List type
+        Expr::List(list) => {
+            let new_list: Vec<Expr> = list
+                .iter()
+                .map(|sub_expr| replace_all(sub_expr, rules))
+                .collect();
+            // After replacing all sub-expressions, apply the rule(s) to the new list itself
+            replace(&Expr::List(new_list), rules)
+        }
     }
 }
 
@@ -448,13 +490,44 @@ mod tests {
             evalparse("(matchq (f a b) (f (pattern x (blank)) (pattern x (blank))))"),
             sym("false")
         );
+
+        // nested patterns, head is pattern
+        assert_eq!(
+            evalparse("(matchq (foo x) ((pattern f (blank)) (pattern y (blank))))"),
+            sym("true")
+        );
     }
 
     #[test]
     fn test_rules_and_replacement() {
-        assert_eq!(evalparse("(replace ((k a) b) (rule ((k (pattern x (blank))) (pattern y (blank))) x))"), sym("a"));
+        assert_eq!(
+            evalparse("(replace ((k a) b) (rule ((k (pattern x (blank))) (pattern y (blank))) x))"),
+            sym("a")
+        );
+
+        // list of rules does first one that matches
+        assert_eq!(
+            evalparse("(replace x (list (rule a b) (rule x y)))"),
+            sym("y")
+        );
+        assert_eq!(
+            evalparse("(replace x (list (rule x y) (rule x z)))"),
+            sym("y")
+        );
+
+        // doesn't keep going
+        assert_eq!(
+            evalparse("(replace x (list (rule x y) (rule y z)))"),
+            sym("y")
+        );
+
+        // let ex = expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap();
+        // println!("ex: {}", ex);
+        assert_eq!(
+            evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1)))"),
+            expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap()
+        );
     }
-    
 }
 
 /*

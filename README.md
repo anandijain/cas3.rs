@@ -35,7 +35,37 @@ EXPR //. {s[x_][y_][z_] -> x[z][y[z]], k[x_][y_] -> x}
 
 random todo - not critical for combinator reduction
 
-improve parser (whitespace and EOF robustness) - infix/m-expr if im feeling naughty
-arb numerics- switch to rug/gmp for all number types 
-string escaping 
-levels have a simple structure that spans wl. like replace with {{}} makes a list applying rules separately, 
+* improve parser (whitespace and EOF robustness) - infix/m-expr if im feeling naughty
+* arb numerics- switch to rug/gmp for all number types 
+* string escaping 
+* levels have a simple structure that spans wl. like replace with {{}} makes a list applying rules separately, 
+* having x_Head syntax would be really nice 
+
+
+
+```scheme
+(set xb (pattern x (blank)))
+(set yb (pattern y (blank)))
+(set zb (pattern z (blank)))
+
+(set l1 (((s xb) yb) zb))
+(set r1 ((x z) (y z)))
+(set rule1 (rule l1 r1))
+(set l2 ((k xb) yb))
+(set r2 x)
+(set rule2 (rule l2 r2))
+(set crules (list rule1 rule2))
+
+
+
+(set ex ((((s s) k) k) k))
+
+```
+
+s[s][k][k][k]
+
+((((s s) k) k) k)
+
+s and k rules
+
+ (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))

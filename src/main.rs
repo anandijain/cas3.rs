@@ -1,6 +1,6 @@
 extern crate peg;
 use ordered_float;
-use rustyline::{DefaultEditor, Result};
+use rustyline::{DefaultEditor, Result, Editor, history::FileHistory};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -127,14 +127,11 @@ impl TableEntry {
 }
 
 pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
+    // println!("ctx: {:?}. sym: {}", ctx, sym);
     let te = ctx.vars.get(&sym);
     if let Some(te) = te {
         let rule = te.own.clone();
-        if let Some(rule) = rule {
-            Some(rule[2].clone())
-        } else {
-            None
-        }
+        return rule;
         // for now, since I'm only allowing a single ownvalue maybe im not going to do the whole handling of HoldPattern[lhs] :> rhs
         // where i actually take sym and do sym /. OwnValues[sym]
         // apply_rule()
@@ -143,33 +140,33 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     }
 }
 
-pub fn get_downvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
-    let te = ctx.vars.get(&sym);
-    if let Some(te) = te {
-        let rule = te.down.clone();
-        if let Expr::List(rule) = rule {
-            Some(Expr::List(rule.to_vec()))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
+// pub fn get_downvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
+//     let te = ctx.vars.get(&sym);
+//     if let Some(te) = te {
+//         let rule = te.down.clone();
+//         if let Expr::List(rule) = rule {
+//             Some(Expr::List(rule.to_vec()))
+//         } else {
+//             None
+//         }
+//     } else {
+//         None
+//     }
+// }
 
-pub fn get_subvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
-    let te = ctx.vars.get(&sym);
-    if let Some(te) = te {
-        let rule = te.sub.clone();
-        if let Expr::List(rule) = rule {
-            Some(Expr::List(rule.to_vec()))
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-}
+// pub fn get_subvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
+//     let te = ctx.vars.get(&sym);
+//     if let Some(te) = te {
+//         let rule = te.sub.clone();
+//         if let Expr::List(rule) = rule {
+//             Some(Expr::List(rule.to_vec()))
+//         } else {
+//             None
+//         }
+//     } else {
+//         None
+//     }
+// }
 
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
@@ -244,6 +241,17 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         }
                         _ => println!("parse takes a string"),
                     }
+                } else if nh == sym("set") {
+                    match &evaluated_args[0] {
+                        Expr::Sym(ref s) => {
+                            let mut te = TableEntry::new();
+                            te.own = Some(evaluated_args[1].clone());
+                            ctx.vars.insert(sym(s), te);
+                            ex = evaluated_args[1].clone();
+                        }
+                        _ => println!("set takes a symbol"),
+                    }
+                    // assert_eq!(evalparse"))
                 } else {
                     ex = Expr::List(
                         std::iter::once(nh.clone())
@@ -256,63 +264,6 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     }
 
     ex
-}
-
-// pub fn startup(ctx: &mut Context, startup_path: &Path) -> Result<()> {
-//     let file = File::open(startup_path)?;
-//     let reader = BufReader::new(file);
-
-//     for line in reader.lines() {
-//         match line {
-//             Ok(content) => {
-//                 if let Ok(ex) = &expr_parser::Expr(&content) {
-//                     let mut stack = Expr::List(vec![]);
-//                     evaluate(&mut stack, ctx, ex);
-//                 }
-//             }
-//             Err(error) => {
-//                 eprintln!("Error reading a line: {:?}", error);
-//             }
-//         }
-//     }
-
-//     Ok(())
-// }
-
-pub fn run() -> Result<()> {
-    let mut rl = DefaultEditor::new()?;
-    let mut ctx = Context2 {
-        vars: HashMap::new(),
-    };
-
-    // startup(&mut ctx, Path::new("startup.sexp")).unwrap();
-
-    let mut i = 0;
-
-    loop {
-        let prompt = format!("(In {}) := ", i);
-        let line = rl.readline(&prompt)?; // read
-        rl.add_history_entry(line.as_str()).unwrap(); // history
-        let ex = expr_parser::Expr(&line);
-        match ex {
-            Ok(expr) => {
-                let mut stack = Expr::List(vec![]);
-                let res = evaluate(&mut stack, &mut ctx, &expr);
-                // println!("head: {}", head(&expr));
-
-                // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &in_i);
-                // let out_i =
-                //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &out_i);
-
-                println!("(Out {i}) = {}", res);
-                i += 1;
-            }
-            Err(err) => println!("Failed to parse: {}", err),
-        }
-    } // loop
 }
 
 fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
@@ -441,18 +392,76 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
         }
         current_expr = new_expr;
         i += 1;
-        if i > 1<<16 {
+        if i > 1 << 16 {
             println!("replace_repeated, iteration limit 1<<16 reached");
-            break; 
+            break;
         }
     }
     current_expr
 }
 
+pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
+    let file = File::open(startup_path)?;
+    let reader = BufReader::new(file);
+
+    for line in reader.lines() {
+        match line {
+            Ok(content) => {
+                if let Ok(ex) = &expr_parser::Expr(&content) {
+                    let mut stack = Expr::List(vec![]);
+                    evaluate(&mut stack, ctx, ex);
+                }
+            }
+            Err(error) => {
+                eprintln!("Error reading a line: {:?}", error);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn run(
+    mut rl: rustyline::Editor<(), rustyline::history::FileHistory>,
+    mut ctx: Context2,
+) -> Result<()> {
+
+    let mut i = 1;
+
+    loop {
+        let prompt = format!("(In {}) := ", i);
+        let line = rl.readline(&prompt)?; // read
+        rl.add_history_entry(line.as_str()).unwrap(); // history
+        let ex = expr_parser::Expr(&line);
+        match ex {
+            Ok(expr) => {
+                let mut stack = Expr::List(vec![]);
+                let res = evaluate(&mut stack, &mut ctx, &expr);
+                // println!("head: {}", head(&expr));
+
+                // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
+                // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
+                // evaluate(&mut ctx, &in_i);
+                // let out_i =
+                //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
+                // evaluate(&mut ctx, &out_i);
+
+                println!("(Out {i}) = {}", res);
+                i += 1;
+            }
+            Err(err) => println!("Failed to parse: {}", err),
+        }
+    } // loop
+}
 
 fn main() -> Result<()> {
-    println!("{}", 1<<16);
-    run()?;
+    let rl = DefaultEditor::new()?;
+    let mut ctx = Context2 {
+        vars: HashMap::new(),
+    };
+
+    // startup(&mut ctx, Path::new("startup.sexp"))?;
+    run(rl, ctx)?;
     Ok(())
 }
 
@@ -553,7 +562,14 @@ mod tests {
             expr_parser::Expr("(list 1 (power 1 2) 2 z)").unwrap()
         );
 
+        let s = "(replace_repeated (list (f (f x)) (f x) (g (f x)) (f (g (f x)))) (list (rule (f (pattern x (blank))) x)))";
+        // todo test s above to give (list x x (g x) (g x))
+        assert_eq!(
+            evalparse(s),
+            expr_parser::Expr("(list x x (g x) (g x))").unwrap()
+        );
 
+        let s2 = "(list (rule (s (pattern x (blank)) (pattern y (blank)) (pattern z (blank))) ((x z) (y z))) (rule (k (pattern x (blank)) (pattern y (blank))) x))";
     }
 }
 

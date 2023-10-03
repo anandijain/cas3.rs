@@ -209,12 +209,15 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 //     Expr::Sym(ref s) => apply_downvalues(stack, ctx, nh, &evaluated_args),
                 //     Expr::List(ref head_args) => apply_subvalues(stack, ctx, nh, &evaluated_args),
                 // };
-
-                ex = Expr::List(
-                    std::iter::once(nh.clone())
-                        .chain(evaluated_args.clone())
-                        .collect(),
-                );
+                if nh == sym("matchq") {
+                    assert!(evaluated_args.len() == 2);
+                } else {
+                    ex = Expr::List(
+                        std::iter::once(nh.clone())
+                            .chain(evaluated_args.clone())
+                            .collect(),
+                    );
+                }
             }
         }
     }
@@ -279,14 +282,14 @@ pub fn run() -> Result<()> {
     } // loop
 }
 
-fn match_pattern(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
             if p_list.len() == 0 || e_list.len() != p_list.len() {
                 return false;
             }
             for (e, p) in e_list.iter().zip(p_list.iter()) {
-                if !match_pattern(e, p, bindings) {
+                if !is_match(e, p, bindings) {
                     return false;
                 }
             }
@@ -300,7 +303,7 @@ fn match_pattern(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String
                     if let Some(existing_binding) = bindings.get(&name) {
                         return expr == existing_binding;
                     }
-                    if match_pattern(expr, pattern, bindings) {
+                    if is_match(expr, pattern, bindings) {
                         bindings.insert(name, expr.clone());
                         return true;
                     }
@@ -327,24 +330,74 @@ fn match_pattern(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String
 }
 
 fn main() -> Result<()> {
-    let result = expr_parser::Expr("(42 foo (1.0 -2) (nested list))");
-    let result2 = expr_parser::Expr("(42 foo (1.0 -2) (nested list))");
-
-    assert_eq!(result, result2);
-
     // run()?;
 
     let mut bindings = HashMap::new();
-    let expr = expr_parser::Expr("1").unwrap();
-    let pattern = expr_parser::Expr("(blank)").unwrap();
-    let pattern = expr_parser::Expr("(blank Int)").unwrap();
-    let pattern = expr_parser::Expr("(pattern x (blank))").unwrap();
-    let pattern = expr_parser::Expr("(pattern x (blank Int))").unwrap();
-    let pattern = expr_parser::Expr("(pattern x (blank Sym))").unwrap();
-    let does_match = match_pattern(&expr, &pattern2, &mut bindings);
+    let expr = expr_parser::Expr("((k a) b)").unwrap();
+    let expr = expr_parser::Expr("(plus 1 2)").unwrap();
+
+    let pattern =
+        expr_parser::Expr("((k (pattern x (blank Sym))) (pattern y (blank Sym)))").unwrap();
+
+    let pattern = expr_parser::Expr("((k (pattern x (blank))) (pattern y (blank)))").unwrap();
+
+    let pattern = expr_parser::Expr("(plus (blank) (blank))").unwrap();
+
+    let does_match = is_match(&expr, &pattern, &mut bindings);
     println!("does_match: {} with bindings {:?}", does_match, bindings);
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expr_parser::Expr;
+    use std::collections::HashMap;
+
+    fn setup() -> HashMap<String, Expr> {
+        HashMap::new()
+    }
+
+    #[test]
+    fn test_blank_match() {
+        let mut bindings = setup();
+        let expr = expr_parser::Expr("1").unwrap();
+        let pattern = expr_parser::Expr("(blank)").unwrap();
+        assert!(is_match(&expr, &pattern, &mut bindings));
+    }
+
+    #[test]
+    fn test_blank_int_match() {
+        let mut bindings = setup();
+        let expr = expr_parser::Expr("1").unwrap();
+        let pattern = expr_parser::Expr("(blank Int)").unwrap();
+        assert!(is_match(&expr, &pattern, &mut bindings));
+    }
+
+    #[test]
+    fn test_pattern_blank_match() {
+        let mut bindings = setup();
+        let expr = expr_parser::Expr("1").unwrap();
+        let pattern = expr_parser::Expr("(pattern x (blank))").unwrap();
+        assert!(is_match(&expr, &pattern, &mut bindings));
+    }
+
+    #[test]
+    fn test_pattern_blank_int_match() {
+        let mut bindings = setup();
+        let expr = expr_parser::Expr("1").unwrap();
+        let pattern = expr_parser::Expr("(pattern x (blank Int))").unwrap();
+        assert!(is_match(&expr, &pattern, &mut bindings));
+    }
+
+    #[test]
+    fn test_pattern_blank_sym_no_match() {
+        let mut bindings = setup();
+        let expr = expr_parser::Expr("1").unwrap();
+        let pattern = expr_parser::Expr("(pattern x (blank Sym))").unwrap();
+        assert!(!is_match(&expr, &pattern, &mut bindings));
+    }
 }
 
 /*

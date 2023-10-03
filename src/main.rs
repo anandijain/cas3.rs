@@ -1,6 +1,13 @@
 extern crate peg;
+use std::borrow::Cow::{self, Borrowed, Owned};
+
 use ordered_float;
-use rustyline::{DefaultEditor, Result, Editor, history::FileHistory};
+use rustyline::{
+    highlight::{Highlighter, MatchingBracketHighlighter},
+    history::FileHistory,
+    validate::MatchingBracketValidator,
+    Completer, DefaultEditor, Editor, Helper, Hinter, Result, Validator,
+};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
@@ -9,6 +16,8 @@ use std::{fmt, path::Path};
 
 peg::parser! {
     grammar expr_parser() for str {
+        rule whitespace() = [' ' | '\t' | '\n' | '\r']*
+
         rule integer() -> Expr
             = n:$("-"? ['0'..='9']+ ) {? n.parse().map(Expr::Int).or(Err("integer")) }
 
@@ -25,7 +34,7 @@ peg::parser! {
             = real() / integer() / symbol() / string()
 
         rule list() -> Expr
-            = "(" l:Expr() ** " " ")" { Expr::List(l) }
+            = "(" l:Expr() ** whitespace() ")" { Expr::List(l) }
 
         pub rule Expr() -> Expr
             = atom() / list()
@@ -400,6 +409,40 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
     current_expr
 }
 
+#[derive(Helper, Completer, Hinter, Validator)]
+pub struct ReplHelper {
+    highlighter: MatchingBracketHighlighter,
+    #[rustyline(Validator)]
+    validator: MatchingBracketValidator,
+    colored_prompt: String,
+}
+
+impl Highlighter for ReplHelper {
+    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
+        &'s self,
+        prompt: &'p str,
+        default: bool,
+    ) -> Cow<'b, str> {
+        if default {
+            Borrowed(&self.colored_prompt)
+        } else {
+            Borrowed(prompt)
+        }
+    }
+
+    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
+        Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
+    }
+
+    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
+        self.highlighter.highlight(line, pos)
+    }
+
+    fn highlight_char(&self, line: &str, pos: usize) -> bool {
+        self.highlighter.highlight_char(line, pos)
+    }
+}
+
 pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
     let file = File::open(startup_path)?;
     let reader = BufReader::new(file);
@@ -422,14 +465,15 @@ pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
 }
 
 pub fn run(
-    mut rl: rustyline::Editor<(), rustyline::history::FileHistory>,
+    mut rl: rustyline::Editor<ReplHelper, rustyline::history::FileHistory>,
     mut ctx: Context2,
 ) -> Result<()> {
-
     let mut i = 1;
 
     loop {
         let prompt = format!("(In {}) := ", i);
+        rl.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{prompt}\x1b[0m");
+
         let line = rl.readline(&prompt)?; // read
         rl.add_history_entry(line.as_str()).unwrap(); // history
         let ex = expr_parser::Expr(&line);
@@ -455,7 +499,14 @@ pub fn run(
 }
 
 fn main() -> Result<()> {
-    let rl = DefaultEditor::new()?;
+    let h = ReplHelper {
+        highlighter: MatchingBracketHighlighter::new(),
+        colored_prompt: "".to_owned(),
+        validator: MatchingBracketValidator::new(),
+    };
+    let config = rustyline::Config::default();
+    let mut rl = Editor::with_config(config)?;
+    rl.set_helper(Some(h));
     let mut ctx = Context2 {
         vars: HashMap::new(),
     };

@@ -383,56 +383,34 @@ fn main() -> Result<()> {
     Ok(())
 }
 
+pub fn evalparse(s: &str) -> Expr {
+    let ex = expr_parser::Expr(s);
+    match ex {
+        Ok(expr) => {
+            let mut ctx = Context2 {
+                vars: HashMap::new(),
+            };
+            let mut stack = Expr::List(vec![]);
+            evaluate(&mut stack, ctx, &expr)
+        }
+        Err(err) => panic!("Failed to parse: {}", err),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use expr_parser::Expr;
-    use std::collections::HashMap;
-
-    fn setup() -> HashMap<String, Expr> {
-        HashMap::new()
-    }
 
     #[test]
-    fn test_blank_match() {
-        let mut bindings = setup();
-        let expr = expr_parser::Expr("1").unwrap();
-        let pattern = expr_parser::Expr("(blank)").unwrap();
-        assert!(is_match(&expr, &pattern, &mut bindings));
-    }
-
-    #[test]
-    fn test_blank_int_match() {
-        let mut bindings = setup();
-        let expr = expr_parser::Expr("1").unwrap();
-        let pattern = expr_parser::Expr("(blank Int)").unwrap();
-        assert!(is_match(&expr, &pattern, &mut bindings));
-    }
-
-    #[test]
-    fn test_pattern_blank_match() {
-        let mut bindings = setup();
-        let expr = expr_parser::Expr("1").unwrap();
-        let pattern = expr_parser::Expr("(pattern x (blank))").unwrap();
-        assert!(is_match(&expr, &pattern, &mut bindings));
-    }
-
-    #[test]
-    fn test_pattern_blank_int_match() {
-        let mut bindings = setup();
-        let expr = expr_parser::Expr("1").unwrap();
-        let pattern = expr_parser::Expr("(pattern x (blank Int))").unwrap();
-        assert!(is_match(&expr, &pattern, &mut bindings));
-    }
-
-    #[test]
-    fn test_pattern_blank_sym_no_match() {
-        let mut bindings = setup();
-        let expr = expr_parser::Expr("1").unwrap();
-        let pattern = expr_parser::Expr("(pattern x (blank Sym))").unwrap();
-        assert!(!is_match(&expr, &pattern, &mut bindings));
+    fn test_pattern_matching() {
+        assert_eq!(evalparse("(matchq 1 (blank))"), sym("true"));
+        assert_eq!(evalparse("(matchq 1 (blank Int))"), sym("true"));
+        assert_eq!(evalparse("(matchq 1 (pattern x (blank)))"), sym("true"));
+        assert_eq!(evalparse("(matchq 1 (pattern x (blank Int)))"), sym("true"));
+        assert_eq!(evalparse("(matchq 1 (pattern x (blank Sym)))"), sym("false"));
     }
 }
+
 
 /*
 exprs/programs to make work

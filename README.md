@@ -38,3 +38,4 @@ random todo - not critical for combinator reduction
 improve parser (whitespace and EOF robustness) - infix/m-expr if im feeling naughty
 arb numerics- switch to rug/gmp for all number types 
 string escaping 
+levels have a simple structure that spans wl. like replace with {{}} makes a list applying rules separately, 

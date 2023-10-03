@@ -226,6 +226,8 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     ex = replace(&evaluated_args[0], &evaluated_args[1]);
                 } else if nh == sym("replace_all") {
                     ex = replace_all(&evaluated_args[0], &evaluated_args[1]);
+                } else if nh == sym("rr") || nh == sym("replace_repeated") {
+                    ex = replace_repeated(&evaluated_args[0], &evaluated_args[1]);
                 } else if nh == sym("head") {
                     ex = head(&evaluated_args[0]);
                 } else if nh == sym("parse") {
@@ -429,7 +431,27 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     }
 }
 
+pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
+    let mut current_expr = expr.clone();
+    let mut i = 0;
+    loop {
+        let new_expr = replace_all(&current_expr, rules);
+        if new_expr == current_expr {
+            break;
+        }
+        current_expr = new_expr;
+        i += 1;
+        if i > 1<<16 {
+            println!("replace_repeated, iteration limit 1<<16 reached");
+            break; 
+        }
+    }
+    current_expr
+}
+
+
 fn main() -> Result<()> {
+    println!("{}", 1<<16);
     run()?;
     Ok(())
 }
@@ -521,12 +543,17 @@ mod tests {
             sym("y")
         );
 
-        // let ex = expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap();
-        // println!("ex: {}", ex);
         assert_eq!(
             evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1)))"),
             expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap()
         );
+
+        assert_eq!(
+            evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1) (rule y 2)))"),
+            expr_parser::Expr("(list 1 (power 1 2) 2 z)").unwrap()
+        );
+
+
     }
 }
 

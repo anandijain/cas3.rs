@@ -211,6 +211,16 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // };
                 if nh == sym("matchq") {
                     assert!(evaluated_args.len() == 2);
+                    ex = Expr::Sym(format!(
+                        "{}",
+                        is_match(&evaluated_args[0], &evaluated_args[1], &mut HashMap::new())
+                    ));
+                } else if nh == sym("sameq") {
+                    let first_arg = &evaluated_args[0];
+                    let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
+                    ex = Expr::Sym(format!("{}", all_same));
+                } else if nh == sym("head") {
+                    ex = head(&evaluated_args[0]);
                 } else {
                     ex = Expr::List(
                         std::iter::once(nh.clone())
@@ -257,7 +267,7 @@ pub fn run() -> Result<()> {
     let mut i = 0;
 
     loop {
-        let prompt = format!("(In {})> ", i);
+        let prompt = format!("(In {}) := ", i);
         let line = rl.readline(&prompt)?; // read
         rl.add_history_entry(line.as_str()).unwrap(); // history
         let ex = expr_parser::Expr(&line);
@@ -274,7 +284,7 @@ pub fn run() -> Result<()> {
                 //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
                 // evaluate(&mut ctx, &out_i);
 
-                println!("(Out {i}): {}", res);
+                println!("(Out {i}) = {}", res);
                 i += 1;
             }
             Err(err) => println!("Failed to parse: {}", err),
@@ -285,9 +295,34 @@ pub fn run() -> Result<()> {
 fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
+            if p_list.len() == 1 {
+                if let Expr::Sym(ref head) = p_list[0] {
+                    if head == "blank" {
+                        return true;
+                    }
+                }
+            }
+
+            if p_list.len() > 0 {
+                if let Expr::Sym(ref head) = p_list[0] {
+                    if head == "pattern" {
+                        let name = p_list[1].clone().to_string();
+                        let pattern = &p_list[2];
+                        if let Some(existing_binding) = bindings.get(&name) {
+                            return expr == existing_binding;
+                        }
+                        if is_match(expr, pattern, bindings) {
+                            bindings.insert(name, expr.clone());
+                            return true;
+                        }
+                    }
+                }
+            }
+
             if p_list.len() == 0 || e_list.len() != p_list.len() {
                 return false;
             }
+
             for (e, p) in e_list.iter().zip(p_list.iter()) {
                 if !is_match(e, p, bindings) {
                     return false;
@@ -330,8 +365,6 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
 }
 
 fn main() -> Result<()> {
-    // run()?;
-
     let mut bindings = HashMap::new();
     let expr = expr_parser::Expr("((k a) b)").unwrap();
     let expr = expr_parser::Expr("(plus 1 2)").unwrap();
@@ -346,6 +379,7 @@ fn main() -> Result<()> {
     let does_match = is_match(&expr, &pattern, &mut bindings);
     println!("does_match: {} with bindings {:?}", does_match, bindings);
 
+    run()?;
     Ok(())
 }
 

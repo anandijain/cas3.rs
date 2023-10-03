@@ -219,6 +219,8 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     let first_arg = &evaluated_args[0];
                     let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
                     ex = Expr::Sym(format!("{}", all_same));
+                } else if nh == sym("replace") {
+                    ex = replace(&evaluated_args[0], &evaluated_args[1]);
                 } else if nh == sym("head") {
                     ex = head(&evaluated_args[0]);
                 } else {
@@ -364,21 +366,28 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
     }
 }
 
-fn main() -> Result<()> {
+/// todo, i need to check semantics of (replace expr (list rules...))
+pub fn replace(expr: &Expr, rule: &Expr) -> Expr {
     let mut bindings = HashMap::new();
-    let expr = expr_parser::Expr("((k a) b)").unwrap();
-    let expr = expr_parser::Expr("(plus 1 2)").unwrap();
+    println!("rule: {}", rule);
+    // not sure if this is necesary but ok
+    assert!(head(rule) == sym("rule"));
+    if is_match(expr, &rule[1], &mut bindings) {
+        
+        let mut new_expr = rule[2].clone();
+        for (name, binding) in bindings {
+            new_expr = replace(
+                &new_expr,
+                &Expr::List(vec![sym("rule"), sym(&name), binding]),
+            );
+        }
+        new_expr
+    } else {
+        expr.clone()
+    }
+}
 
-    let pattern =
-        expr_parser::Expr("((k (pattern x (blank Sym))) (pattern y (blank Sym)))").unwrap();
-
-    let pattern = expr_parser::Expr("((k (pattern x (blank))) (pattern y (blank)))").unwrap();
-
-    let pattern = expr_parser::Expr("(plus (blank) (blank))").unwrap();
-
-    let does_match = is_match(&expr, &pattern, &mut bindings);
-    println!("does_match: {} with bindings {:?}", does_match, bindings);
-
+fn main() -> Result<()> {
     run()?;
     Ok(())
 }
@@ -391,7 +400,7 @@ pub fn evalparse(s: &str) -> Expr {
                 vars: HashMap::new(),
             };
             let mut stack = Expr::List(vec![]);
-            evaluate(&mut stack, ctx, &expr)
+            evaluate(&mut stack, &mut ctx, &expr)
         }
         Err(err) => panic!("Failed to parse: {}", err),
     }
@@ -407,10 +416,46 @@ mod tests {
         assert_eq!(evalparse("(matchq 1 (blank Int))"), sym("true"));
         assert_eq!(evalparse("(matchq 1 (pattern x (blank)))"), sym("true"));
         assert_eq!(evalparse("(matchq 1 (pattern x (blank Int)))"), sym("true"));
-        assert_eq!(evalparse("(matchq 1 (pattern x (blank Sym)))"), sym("false"));
-    }
-}
+        assert_eq!(
+            evalparse("(matchq 1 (pattern x (blank Sym)))"),
+            sym("false")
+        );
+        assert_eq!(
+            evalparse("(matchq ((k a) b) ((k (pattern x (blank Sym))) (pattern y (blank Sym))))"),
+            sym("true")
+        );
+        assert_eq!(
+            evalparse("(matchq ((k a) b) ((k (pattern x (blank))) (pattern y (blank))))"),
+            sym("true")
+        );
+        assert_eq!(
+            evalparse("(matchq (plus 1 2) (plus (blank) (blank)))"),
+            sym("true")
+        );
 
+        assert_eq!(evalparse("(matchq (list a b c) (blank))"), sym("true"));
+        assert_eq!(
+            evalparse("(matchq (list a b c) (pattern x (blank)))"),
+            sym("true")
+        );
+
+        assert_eq!(evalparse("(matchq (f (g 1)) (f (g (blank))))"), sym("true"));
+        assert_eq!(
+            evalparse("(matchq (f a a) (f (pattern x (blank)) (pattern x (blank))))"),
+            sym("true")
+        );
+        assert_eq!(
+            evalparse("(matchq (f a b) (f (pattern x (blank)) (pattern x (blank))))"),
+            sym("false")
+        );
+    }
+
+    #[test]
+    fn test_rules_and_replacement() {
+        assert_eq!(evalparse("(replace ((k a) b) (rule ((k (pattern x (blank))) (pattern y (blank))) x))"), sym("a"));
+    }
+    
+}
 
 /*
 exprs/programs to make work

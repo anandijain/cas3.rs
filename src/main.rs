@@ -3,6 +3,7 @@ use std::borrow::Cow::{self, Borrowed, Owned};
 
 use ordered_float;
 use rustyline::{
+    error::ReadlineError,
     highlight::{Highlighter, MatchingBracketHighlighter},
     history::FileHistory,
     validate::MatchingBracketValidator,
@@ -362,12 +363,13 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
         assert!(head(&rule) == sym("rule"));
         if is_match(expr, &rule[1], &mut bindings) {
             let mut new_expr = rule[2].clone();
-            for (name, binding) in bindings {
+            for (name, binding) in bindings.clone() {
                 new_expr = replace(
                     &new_expr,
                     &Expr::List(vec![sym("rule"), sym(&name), binding]),
                 );
             }
+            println!("bindings: {:?}", bindings);
             return new_expr;
         }
     }
@@ -474,28 +476,47 @@ pub fn run(
         let prompt = format!("(In {}) := ", i);
         rl.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{prompt}\x1b[0m");
 
-        let line = rl.readline(&prompt)?; // read
-        rl.add_history_entry(line.as_str()).unwrap(); // history
-        let ex = expr_parser::Expr(&line);
-        match ex {
-            Ok(expr) => {
-                let mut stack = Expr::List(vec![]);
-                let res = evaluate(&mut stack, &mut ctx, &expr);
-                // println!("head: {}", head(&expr));
+        let line = rl.readline(&prompt); // read
+        match line {
+            Ok(l) => {
+                rl.add_history_entry(l.as_str()).unwrap(); // history
+                let ex = expr_parser::Expr(&l);
+                match ex {
+                    Ok(expr) => {
+                        let mut stack = Expr::List(vec![]);
+                        let res = evaluate(&mut stack, &mut ctx, &expr);
+                        // println!("head: {}", head(&expr));
 
-                // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &in_i);
-                // let out_i =
-                //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
-                // evaluate(&mut ctx, &out_i);
+                        // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
+                        // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
+                        // evaluate(&mut ctx, &in_i);
+                        // let out_i =
+                        //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
+                        // evaluate(&mut ctx, &out_i);
 
-                println!("(Out {i}) = {}", res);
-                i += 1;
+                        println!("(Out {i}) = {}", res);
+                        i += 1;
+                    }
+
+                    Err(err) => println!("Failed to parse: {}", err),
+                }
             }
-            Err(err) => println!("Failed to parse: {}", err),
+            Err(ReadlineError::Interrupted) => {
+                println!("CTRL-C");
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                println!("CTRL-D");
+                break;
+            }
+            Err(err) => {
+                println!("Error: {:?}", err);
+                break;
+            }
         }
     } // loop
+    rl.save_history("history.txt").unwrap();
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -507,6 +528,9 @@ fn main() -> Result<()> {
     let config = rustyline::Config::default();
     let mut rl = Editor::with_config(config)?;
     rl.set_helper(Some(h));
+    if rl.load_history("history.txt").is_err() {
+        println!("No previous history.");
+    }
     let mut ctx = Context2 {
         vars: HashMap::new(),
     };

@@ -68,4 +68,15 @@ s[s][k][k][k]
 
 s and k rules
 
- (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))
+(list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))
+
+(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
+
+the goal is to make this reduce to 
+
+(((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank)))
+
+(((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank)))
+
+(In 28) := (replace_all ((((s s) k) k) k) (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))))
+(Out 28) = (((x z) (y z)) k)

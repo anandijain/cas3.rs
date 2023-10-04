@@ -356,7 +356,7 @@ pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
     rules
 }
 
-pub fn norm_rules(rules:&Expr)-> Vec<Expr> {
+pub fn norm_rules(rules: &Expr) -> Vec<Expr> {
     if head(rules) == sym("rule") {
         return vec![rules.clone()];
     } else {
@@ -366,7 +366,6 @@ pub fn norm_rules(rules:&Expr)-> Vec<Expr> {
 }
 
 pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
-
     let rules_list = norm_rules(rules);
 
     for rule in rules_list {
@@ -413,7 +412,7 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     //     }
     //     _ => panic!("rules needs to be a list"),
     // }
-    // 
+    //
     let rules_list = norm_rules(rules);
     for rule in rules_list {
         let mut bindings = HashMap::new();
@@ -711,11 +710,32 @@ mod tests {
             expr_parser::Expr("(list x x (g x) (g x))").unwrap()
         );
 
-        assert_eq!(
-            evalparse("(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))"),
-            sym("k")
-        );
+        // Combinator reduction of And for Tuples[{True, False}]
 
+        // true, true
+        // assert_eq!(
+        //     evalparse("(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))"),
+        //     sym("k")
+        // );
+
+        // let and_false_false = "((((s s) k) (s k)) (s k))"; // (s k)
+        // let and_false_true = "((((s s) k) (s k)) k)"; // (s k)
+        // let and_true_false = "((((s s) k) k) (s k))"; // (s k)
+        // let and_true_true = "((((s s) k) k) k)"; // k
+
+        let test_cases = vec![
+            ("((((s s) k) (s k)) (s k))", "(s k)"),
+            ("((((s s) k) (s k)) k)", "(s k)"),
+            ("((((s s) k) k) (s k))", "(s k)"),
+            ("((((s s) k) k) k)", "k"),
+        ];
+
+        for (input, res) in test_cases.iter() {
+            assert_eq!(
+        evalparse(&format!("(rr {} (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))", input)),
+        expr_parser::Expr(res).unwrap()
+    );
+        }
     }
 }
 

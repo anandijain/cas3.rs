@@ -5,13 +5,12 @@ use ordered_float;
 use rustyline::{
     error::ReadlineError,
     highlight::{Highlighter, MatchingBracketHighlighter},
-    history::FileHistory,
     validate::MatchingBracketValidator,
-    Completer, DefaultEditor, Editor, Helper, Hinter, Result, Validator,
+    Completer, Editor, Helper, Hinter, Result, Validator,
 };
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, BufRead, BufReader};
+use std::io::{BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
 use std::{fmt, path::Path};
 
@@ -220,7 +219,12 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // this corresponds to step 15 in Wagner's main eval loop section
                 // where we apply internal/builtin down and subvalues
                 if nh == sym("matchq") {
-                    assert!(evaluated_args.len() == 2);
+                    // assert!(evaluated_args.len() == 2);
+                    if evaluated_args.len() != 2 {
+                        println!("matchq takes 2 arguments");
+                        ex = sym("$Failed");
+                        break;
+                    }
                     ex = Expr::Sym(format!(
                         "{}",
                         is_match(&evaluated_args[0], &evaluated_args[1], &mut HashMap::new())
@@ -288,8 +292,8 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
             }
 
             if p_list.len() > 0 {
-                if let Expr::Sym(ref head) = p_list[0] {
-                    if head == "pattern" {
+                if let Expr::Sym(ref p_head) = p_list[0] {
+                    if p_head == "pattern" {
                         let name = p_list[1].clone().to_string();
                         let pattern = &p_list[2];
                         if let Some(existing_binding) = bindings.get(&name) {
@@ -297,6 +301,17 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
                         }
                         if is_match(expr, pattern, bindings) {
                             bindings.insert(name, expr.clone());
+                            return true;
+                        }
+                    } else if p_head == "blank" {
+                        if p_list.len() == 2 {
+                            // println!("p_list: {:?}", p_list);
+                            let required_head = &p_list[1];
+                            if head(expr) == *required_head {
+                                return true;
+                            }
+                        } else if p_list.len() == 1 {
+                            // not sure if this branch is needed. this whole function needs to be rewritten
                             return true;
                         }
                     }
@@ -330,6 +345,7 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
                     if p_list.len() == 2 {
                         // println!("p_list: {:?}", p_list);
                         let required_head = &p_list[1];
+                        println!("required_head: {}", required_head);
                         if head(expr) == *required_head {
                             return true;
                         }
@@ -374,7 +390,7 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
         if is_match(expr, &rule[1], &mut bindings) {
             let mut new_expr = rule[2].clone();
             new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
-            println!("bindings: {:?} expr: {}", bindings, new_expr);
+            // println!("bindings: {:?} expr: {}", bindings, new_expr);
             // for (name, binding) in bindings.clone() {
             //     new_expr = replace(
             //         &new_expr,
@@ -389,30 +405,6 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
 }
 
 pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
-    // let cexpr = expr.clone()
-    // match rules {
-    //     Expr::List(rs) => {
-    //         for rule in rs {
-    //             let mut bindings = HashMap::new();
-    //             let (lhs, rhs) = (rule[1].clone(), rule[2].clone());
-    //             if is_match(expr, &lhs, &mut bindings) {
-    //                 return replace(expr, rule);
-    //             }
-    //         }
-    //         match expr {
-    //             Expr::List(ps) => {
-    //                 let mut new = vec![];
-    //                 for p in ps {
-    //                     new.push(replace_all(p, rules));
-    //                 }
-    //                 return Expr::List(new);
-    //             }
-    //             Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => return replace(expr, rules),
-    //         }
-    //     }
-    //     _ => panic!("rules needs to be a list"),
-    // }
-    //
     let rules_list = norm_rules(rules);
     for rule in rules_list {
         let mut bindings = HashMap::new();
@@ -423,20 +415,12 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     }
 
     match expr {
-        // Base cases: Symbol, Int, Real, and Str types
         Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => replace(expr, rules),
-
-        // Recursive case: List type
         Expr::List(list) => {
-            // for l in list {
-
-            // }
             let new_list: Vec<Expr> = list
                 .iter()
                 .map(|sub_expr| replace_all(sub_expr, rules))
                 .collect();
-            // After replacing all sub-expressions, apply the rule(s) to the new list itself
-            // replace(&Expr::List(new_list), rules)
             Expr::List(new_list)
         }
     }
@@ -551,16 +535,13 @@ pub fn run(
                 }
             }
             Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
                 continue;
             }
             Err(ReadlineError::Eof) => {
-                println!("CTRL-D");
                 break;
             }
             Err(err) => {
                 println!("Error: {:?}", err);
-                break;
             }
         }
     } // loop
@@ -580,7 +561,7 @@ fn main() -> Result<()> {
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
     }
-    let mut ctx = Context2 {
+    let ctx = Context2 {
         vars: HashMap::new(),
     };
 
@@ -651,6 +632,12 @@ mod tests {
             evalparse("(matchq (foo x) ((pattern f (blank)) (pattern y (blank))))"),
             sym("true")
         );
+
+        // head matching
+        assert_eq!(
+            evalparse("(matchq (list x) (pattern x (blank list)))"),
+            sym("true")
+        );
     }
 
     #[test]
@@ -711,18 +698,6 @@ mod tests {
         );
 
         // Combinator reduction of And for Tuples[{True, False}]
-
-        // true, true
-        // assert_eq!(
-        //     evalparse("(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))"),
-        //     sym("k")
-        // );
-
-        // let and_false_false = "((((s s) k) (s k)) (s k))"; // (s k)
-        // let and_false_true = "((((s s) k) (s k)) k)"; // (s k)
-        // let and_true_false = "((((s s) k) k) (s k))"; // (s k)
-        // let and_true_true = "((((s s) k) k) k)"; // k
-
         let test_cases = vec![
             ("((((s s) k) (s k)) (s k))", "(s k)"),
             ("((((s s) k) (s k)) k)", "(s k)"),

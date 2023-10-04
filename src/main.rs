@@ -72,7 +72,7 @@ impl Deref for Expr {
     fn deref(&self) -> &Self::Target {
         match self {
             Expr::List(vec) => vec,
-            _ => panic!("Can only deref Expr::List"),
+            e => panic!("Can only deref Expr::List. ex:{}", e),
         }
     }
 }
@@ -348,28 +348,41 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
     }
 }
 
-pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
-    // If it's a single rule, make it a list containing that rule
-    let rules_list = if head(rules) == sym("rule") {
-        vec![rules.clone()]
+pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
+    let mut rules = Expr::List(vec![sym("list")]);
+    for (name, binding) in bindings.clone() {
+        rules.push(Expr::List(vec![sym("rule"), sym(&name), binding.clone()]));
+    }
+    rules
+}
+
+pub fn norm_rules(rules:&Expr)-> Vec<Expr> {
+    if head(rules) == sym("rule") {
+        return vec![rules.clone()];
     } else {
         assert_eq!(head(rules), sym("list"));
-        // Assumes that 'rules' is a list of rules; otherwise, you might want to validate this.
-        rules.clone()[1..].to_vec()
+        return rules.clone()[1..].to_vec();
     };
+}
+
+pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
+
+    let rules_list = norm_rules(rules);
 
     for rule in rules_list {
         let mut bindings = HashMap::new();
         assert!(head(&rule) == sym("rule"));
         if is_match(expr, &rule[1], &mut bindings) {
             let mut new_expr = rule[2].clone();
-            for (name, binding) in bindings.clone() {
-                new_expr = replace(
-                    &new_expr,
-                    &Expr::List(vec![sym("rule"), sym(&name), binding]),
-                );
-            }
-            println!("bindings: {:?}", bindings);
+            new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
+            println!("bindings: {:?} expr: {}", bindings, new_expr);
+            // for (name, binding) in bindings.clone() {
+            //     new_expr = replace(
+            //         &new_expr,
+            //         &Expr::List(vec![sym("rule"), sym(&name), binding]),
+            //     );
+            // }
+
             return new_expr;
         }
     }
@@ -377,18 +390,55 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
 }
 
 pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
+    // let cexpr = expr.clone()
+    // match rules {
+    //     Expr::List(rs) => {
+    //         for rule in rs {
+    //             let mut bindings = HashMap::new();
+    //             let (lhs, rhs) = (rule[1].clone(), rule[2].clone());
+    //             if is_match(expr, &lhs, &mut bindings) {
+    //                 return replace(expr, rule);
+    //             }
+    //         }
+    //         match expr {
+    //             Expr::List(ps) => {
+    //                 let mut new = vec![];
+    //                 for p in ps {
+    //                     new.push(replace_all(p, rules));
+    //                 }
+    //                 return Expr::List(new);
+    //             }
+    //             Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => return replace(expr, rules),
+    //         }
+    //     }
+    //     _ => panic!("rules needs to be a list"),
+    // }
+    // 
+    let rules_list = norm_rules(rules);
+    for rule in rules_list {
+        let mut bindings = HashMap::new();
+        assert!(head(&rule) == sym("rule"));
+        if is_match(expr, &rule[1], &mut bindings) {
+            return replace(expr, &rule);
+        }
+    }
+
     match expr {
         // Base cases: Symbol, Int, Real, and Str types
         Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => replace(expr, rules),
 
         // Recursive case: List type
         Expr::List(list) => {
+            // for l in list {
+
+            // }
             let new_list: Vec<Expr> = list
                 .iter()
                 .map(|sub_expr| replace_all(sub_expr, rules))
                 .collect();
             // After replacing all sub-expressions, apply the rule(s) to the new list itself
-            replace(&Expr::List(new_list), rules)
+            // replace(&Expr::List(new_list), rules)
+            Expr::List(new_list)
         }
     }
 }
@@ -627,6 +677,18 @@ mod tests {
             sym("y")
         );
 
+        // case where no rules apply
+        assert_eq!(
+            evalparse("(replace_all x (list (rule y a) (rule z b)))"),
+            sym("x")
+        );
+
+        // test for blank with head + nested list
+        assert_eq!(
+            evalparse(r#"(replace_all (list 1 1.5 Pi (list a 2)) (rule (blank Int) "hi"))"#),
+            expr_parser::Expr(r#"(list "hi" 1.5 Pi (list a "hi"))"#).unwrap()
+        );
+
         assert_eq!(
             evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1)))"),
             expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap()
@@ -637,6 +699,11 @@ mod tests {
             expr_parser::Expr("(list 1 (power 1 2) 2 z)").unwrap()
         );
 
+        assert_eq!(
+            evalparse("(replace_all (plus 1 (pow x 2) (pow x 4)) (rule (pow x (pattern p (blank))) (f p)))"),
+            expr_parser::Expr("(plus 1 (f 2) (f 4))").unwrap()
+        );
+
         let s = "(replace_repeated (list (f (f x)) (f x) (g (f x)) (f (g (f x)))) (list (rule (f (pattern x (blank))) x)))";
         // todo test s above to give (list x x (g x) (g x))
         assert_eq!(
@@ -644,7 +711,11 @@ mod tests {
             expr_parser::Expr("(list x x (g x) (g x))").unwrap()
         );
 
-        let s2 = "(list (rule (s (pattern x (blank)) (pattern y (blank)) (pattern z (blank))) ((x z) (y z))) (rule (k (pattern x (blank)) (pattern y (blank))) x))";
+        assert_eq!(
+            evalparse("(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))"),
+            sym("k")
+        );
+
     }
 }
 

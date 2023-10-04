@@ -177,6 +177,74 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
 //     }
 // }
 
+pub fn internal_functions_apply(
+    stack: &mut Expr,
+    ctx: &mut Context2,
+    nh: Expr,
+    evaluated_args: Vec<Expr>,
+) -> Expr {
+    if nh == sym("matchq") {
+        // assert!(evaluated_args.len() == 2);
+        if evaluated_args.len() != 2 {
+            println!("matchq takes 2 arguments");
+            return sym("$Failed");
+        }
+        return Expr::Sym(format!(
+            "{}",
+            is_match(&evaluated_args[0], &evaluated_args[1], &mut HashMap::new())
+        ));
+    } else if nh == sym("sameq") {
+        let first_arg = &evaluated_args[0];
+        let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
+        return Expr::Sym(format!("{}", all_same));
+    } else if nh == sym("replace") {
+        return replace(&evaluated_args[0], &evaluated_args[1]);
+    } else if nh == sym("replace_all") {
+        return replace_all(&evaluated_args[0], &evaluated_args[1]);
+    } else if nh == sym("rr") || nh == sym("replace_repeated") {
+        return replace_repeated(&evaluated_args[0], &evaluated_args[1]);
+    } else if nh == sym("head") {
+        return head(&evaluated_args[0]);
+    } else if nh == sym("parse") {
+        match evaluated_args[0] {
+            Expr::Str(ref s) => {
+                let pex = expr_parser::Expr(s);
+                match pex {
+                    Ok(expr) => return expr,
+                    Err(err) => {
+                        println!("Failed to parse: {}", err);
+                        return sym("$Failed");
+                    }
+                }
+            }
+            _ => {
+                println!("parse takes a string");
+                return sym("$Failed");
+            }
+        }
+    } else if nh == sym("set") {
+        match &evaluated_args[0] {
+            Expr::Sym(ref s) => {
+                let mut te = TableEntry::new();
+                te.own = Some(evaluated_args[1].clone());
+                ctx.vars.insert(sym(s), te);
+                return evaluated_args[1].clone();
+            }
+            _ => {
+                println!("set takes a symbol");
+                return sym("$Failed");
+            }
+        }
+        // assert_eq!(evalparse"))
+    } else {
+        return Expr::List(
+            std::iter::once(nh.clone())
+                .chain(evaluated_args.clone().to_owned())
+                .collect(),
+        );
+    }
+}
+
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
     let mut last_ex = None;
@@ -218,61 +286,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 
                 // this corresponds to step 15 in Wagner's main eval loop section
                 // where we apply internal/builtin down and subvalues
-                if nh == sym("matchq") {
-                    // assert!(evaluated_args.len() == 2);
-                    if evaluated_args.len() != 2 {
-                        println!("matchq takes 2 arguments");
-                        ex = sym("$Failed");
-                        break;
-                    }
-                    ex = Expr::Sym(format!(
-                        "{}",
-                        is_match(&evaluated_args[0], &evaluated_args[1], &mut HashMap::new())
-                    ));
-                } else if nh == sym("sameq") {
-                    let first_arg = &evaluated_args[0];
-                    let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
-                    ex = Expr::Sym(format!("{}", all_same));
-                } else if nh == sym("replace") {
-                    ex = replace(&evaluated_args[0], &evaluated_args[1]);
-                } else if nh == sym("replace_all") {
-                    ex = replace_all(&evaluated_args[0], &evaluated_args[1]);
-                } else if nh == sym("rr") || nh == sym("replace_repeated") {
-                    ex = replace_repeated(&evaluated_args[0], &evaluated_args[1]);
-                } else if nh == sym("head") {
-                    ex = head(&evaluated_args[0]);
-                } else if nh == sym("parse") {
-                    match evaluated_args[0] {
-                        Expr::Str(ref s) => {
-                            let pex = expr_parser::Expr(s);
-                            match pex {
-                                Ok(expr) => ex = expr,
-                                Err(err) => {
-                                    println!("Failed to parse: {}", err);
-                                    return sym("$Failed");
-                                }
-                            }
-                        }
-                        _ => println!("parse takes a string"),
-                    }
-                } else if nh == sym("set") {
-                    match &evaluated_args[0] {
-                        Expr::Sym(ref s) => {
-                            let mut te = TableEntry::new();
-                            te.own = Some(evaluated_args[1].clone());
-                            ctx.vars.insert(sym(s), te);
-                            ex = evaluated_args[1].clone();
-                        }
-                        _ => println!("set takes a symbol"),
-                    }
-                    // assert_eq!(evalparse"))
-                } else {
-                    ex = Expr::List(
-                        std::iter::once(nh.clone())
-                            .chain(evaluated_args.clone())
-                            .collect(),
-                    );
-                }
+                ex = internal_functions_apply(stack, ctx, nh, evaluated_args);
             }
         }
     }
@@ -343,9 +357,7 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
                     }
                 } else if p_head == "blank" {
                     if p_list.len() == 2 {
-                        // println!("p_list: {:?}", p_list);
                         let required_head = &p_list[1];
-                        println!("required_head: {}", required_head);
                         if head(expr) == *required_head {
                             return true;
                         }

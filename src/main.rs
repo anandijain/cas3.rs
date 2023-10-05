@@ -106,6 +106,9 @@ fn head(expr: &Expr) -> Expr {
     }
 }
 
+// (a b c) -> (b c)
+// fn rest(expr: &Expr) -> Expr {}
+
 pub fn is_atom(expr: &Expr) -> bool {
     match expr {
         Expr::List(_) => false,
@@ -202,6 +205,10 @@ pub fn internal_functions_apply(
     } else if nh == sym("replace_all") {
         return replace_all(&evaluated_args[0], &evaluated_args[1]);
     } else if nh == sym("rr") || nh == sym("replace_repeated") {
+        if evaluated_args.len() != 2 {
+            println!("replace_repeated takes 2 arguments");
+            return sym("$Failed");
+        }
         return replace_repeated(&evaluated_args[0], &evaluated_args[1]);
     } else if nh == sym("head") {
         return head(&evaluated_args[0]);
@@ -223,20 +230,75 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("set") {
-        match &evaluated_args[0] {
+        let lhs = &evaluated_args[0];
+        match lhs {
             Expr::Sym(ref s) => {
+                // pretty sure this needs to be fixed to check if te already exists 
                 let mut te = TableEntry::new();
                 te.own = Some(evaluated_args[1].clone());
                 ctx.vars.insert(sym(s), te);
                 return evaluated_args[1].clone();
             }
+            // this is the down/subvalue case
+            Expr::List(ls) => {
+                let lhs_h = &ls[0];
+                match lhs_h {
+                    // lhs_h is the tag in this downvalue assignment
+                    Expr::Sym(_) => {
+                        //given
+                        // (set (f (pattern x (blank))) x)
+                        // we end up pushing
+                        // (rule_delayed (holdpattern expr[1]) expr[2])
+                        // (rule_delayed (holdpattern evaluated_args[0]) evaluated_args[1])
+                        let rhs = &evaluated_args[1];
+                        // onto the downvalues of h (which is expected to have head list)
+                        let te: &mut TableEntry =
+                            ctx.vars.entry(lhs_h.clone()).or_insert_with(TableEntry::new);
+                        let dv_str = format!("(rule_delayed (hold_pattern {lhs}) {rhs})");
+                        let dv = expr_parser::Expr(&dv_str).unwrap();
+
+                        // NOTE! here we aren't inserting in the right order, where we look for more specific 
+                        // definitions and insert them first. so user has to do the right order themselves
+                        // at the moment 
+                        te.down.push(dv);
+                        return rhs.clone();
+                    }
+                    // subvalue
+                    Expr::List(ls2) => {
+                        todo!()
+                    }
+                    _ => panic!("hi"),
+                }
+            }
             _ => {
-                println!("set takes a symbol");
+                println!("set takes a symbol or list");
                 return sym("$Failed");
             }
         }
-        // assert_eq!(evalparse"))
-    } else {
+    } else if nh == sym("own_values") {
+        ctx.vars.get(&evaluated_args[0]).unwrap().own.clone().unwrap()
+        // todo!()
+    } else if nh == sym("down_values") {
+        ctx.vars.get(&evaluated_args[0]).unwrap().down.clone()
+    } else if nh == sym("sub_values") {
+        todo!()
+    } 
+    // need to hold our args first otherwise (set x 1) (clear x) ends up being (clear 1) which makes no sense
+    // else if nh == sym("clear") {
+    //     match &evaluated_args[0] {
+    //         Expr::Sym(ref s) => {
+    //             if let Some(te) =  ctx.vars.get_mut(&evaluated_args[0]) {
+    //                 te.own = None;
+    //             }
+    //             return sym("Null");
+    //         }
+    //         _ => {
+    //             println!("set takes a symbol");
+    //             return sym("$Failed");
+    //         }
+    //     }
+    // }
+    else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -269,14 +331,63 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 }
             }
             Expr::List(ref ls) => {
-                let h = ls.first().unwrap();
+                let h;
+                if let Some(sh) = ls.first() {
+                    h = sh;
+                } else {
+                    println!("Expr::List needs a head");
+                    return sym("$Failed");
+                }
+                // step 5
                 let nh = evaluate(stack, ctx, h);
+
+                // step 6
+                // the use of a separate stack here is questionable
+                // also to note that when we use "contains" on it, we also do a comparison against the head ("list"), which is wrong
+                // but for practical purposes shouldn't cause a problem
+
+                // the most important next step here is making sure that (attrs set) works correctly
+
+                // note that something here causes SO 
+                // let nh_attrs = evaluate(
+                //     &mut Expr::List(vec![sym("list")]),
+                //     ctx,
+                //     &expr_parser::Expr(&format!("(attrs {})", nh).to_string()).unwrap(),
+                // );
+                // println!("nh_attrs: {:?}", nh_attrs);
+                // assert!(head(&nh_attrs) == sym("list"));
+                // if nh_attrs.contains(&sym("HoldAllComplete")) {
+                //     // skip to 14
+                //     todo!();
+                // }
+
+                // step 7
+
                 let mut evaluated_args = vec![];
 
-                for p in &ls[1..] {
-                    evaluated_args.push(evaluate(stack, ctx, p));
+                // hold_mask entry with a zero means "don't hold"
+                let mut hold_mask = vec![false; ls.len() - 1];
+
+                // idk if it should be else ifs
+                // if nh_attrs.contains(&sym("HoldAll")) {
+                //     hold_mask.fill(true);
+                // }
+                // if nh_attrs.contains(&sym("HoldFirst")) {
+                //     hold_mask[0] = true;
+                // }
+                // if nh_attrs.contains(&sym("HoldRest")) {
+                //     hold_mask[1..].fill(true);
+                // }
+
+                for (i, p) in ls[1..].iter().enumerate() {
+                    if hold_mask[i] {
+                        evaluated_args.push(p.clone());
+                    } else {
+                        evaluated_args.push(evaluate(stack, ctx, p));
+                    }
                 }
 
+                // step 14
                 // ex = match nh {
                 //     // we dont need to panic here "abc"[foo] doesn't
                 //     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
@@ -294,7 +405,13 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     ex
 }
 
-fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+// this whole thing needs to be rewritten
+// just a total mess
+fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+    let mut pattern_expr = pattern_ex.clone();
+    if head(&pattern_expr) == sym("hold_pattern") {
+        pattern_expr = pattern_expr[1].clone();
+    }
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
             if p_list.len() == 1 {
@@ -368,10 +485,10 @@ fn is_match(expr: &Expr, pattern_expr: &Expr, bindings: &mut HashMap<String, Exp
             }
             false
         }
-        (Expr::Sym(e), Expr::Sym(p)) => e == p,
-        (Expr::Int(e), Expr::Int(p)) => e == p,
-        (Expr::Real(e), Expr::Real(p)) => e == p,
-        (Expr::Str(e), Expr::Str(p)) => e == p,
+        (Expr::Sym(e), Expr::Sym(p)) => e == &p,
+        (Expr::Int(e), Expr::Int(p)) => e == &p,
+        (Expr::Real(e), Expr::Real(p)) => e == &p,
+        (Expr::Str(e), Expr::Str(p)) => e == &p,
         _ => false,
     }
 }
@@ -385,7 +502,7 @@ pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
 }
 
 pub fn norm_rules(rules: &Expr) -> Vec<Expr> {
-    if head(rules) == sym("rule") {
+    if head(rules) == sym("rule") || head(rules) == sym("rule_delayed") {
         return vec![rules.clone()];
     } else {
         assert_eq!(head(rules), sym("list"));
@@ -398,7 +515,8 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
 
     for rule in rules_list {
         let mut bindings = HashMap::new();
-        assert!(head(&rule) == sym("rule"));
+        println!("rule: {}", rule);
+        assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
         if is_match(expr, &rule[1], &mut bindings) {
             let mut new_expr = rule[2].clone();
             new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
@@ -420,7 +538,7 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     let rules_list = norm_rules(rules);
     for rule in rules_list {
         let mut bindings = HashMap::new();
-        assert!(head(&rule) == sym("rule"));
+        assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
         if is_match(expr, &rule[1], &mut bindings) {
             return replace(expr, &rule);
         }
@@ -525,6 +643,9 @@ pub fn run(
         match line {
             Ok(l) => {
                 rl.add_history_entry(l.as_str()).unwrap(); // history
+                // saving every line (even if slow, just until its more stable)
+                rl.save_history("history.txt").unwrap();
+
                 let ex = expr_parser::Expr(&l);
                 match ex {
                     Ok(expr) => {
@@ -557,7 +678,6 @@ pub fn run(
             }
         }
     } // loop
-    rl.save_history("history.txt").unwrap();
     Ok(())
 }
 
@@ -708,21 +828,38 @@ mod tests {
             evalparse(s),
             expr_parser::Expr("(list x x (g x) (g x))").unwrap()
         );
-
+        // (s k) is false, and k is true
         // Combinator reduction of And for Tuples[{True, False}]
+        // in boolean logic, you need 3 things to "do everything"
+        // true, false, nand
+        // whats cool about combinators, is you only need 2 things
+        // s and k combinators. everything else is up to interpretation
+
         let test_cases = vec![
             ("((((s s) k) (s k)) (s k))", "(s k)"),
             ("((((s s) k) (s k)) k)", "(s k)"),
             ("((((s s) k) k) (s k))", "(s k)"),
             ("((((s s) k) k) k)", "k"),
         ];
-
+        let crules_str = "(list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))";
         for (input, res) in test_cases.iter() {
             assert_eq!(
-        evalparse(&format!("(rr {} (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))", input)),
-        expr_parser::Expr(res).unwrap()
-    );
+                evalparse(&format!("(rr {} {crules_str})", input)),
+                expr_parser::Expr(res).unwrap()
+            );
         }
+
+        // let nand = "s[s[k[s[s[s][s[k[k[k]]]]]]]][s]";
+        // (s (s (k (s (s s) (s (k (k k)))))))
+
+        let nand = "(((s s) (s (k (k k)))) s)";
+        let nand = "(((s s) (s (k (k k)))) s)";
+        let nand = "(s (s (k (s (((s s) (s (k (k k)))))))) s)";
+        let nand = "(((s (s (k (((s (s s)) (s (k (k k)))))))) s)";
+        let a = "k";
+        let b = "k";
+        let s = format!("(({nand} {a}) {b})");
+        println!("{}", s);
     }
 }
 

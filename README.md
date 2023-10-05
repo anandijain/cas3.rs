@@ -40,9 +40,17 @@ random todo - not critical for combinator reduction
 * string escaping 
 * levels have a simple structure that spans wl. like replace with {{}} makes a list applying rules separately, 
 * having x_Head syntax would be really nice 
+* being able to paste in multiple expressions and have them all evaluate
+* real attributes system (mainly just hold*, i don't need listable)
+* evaluataion control
+* list operations
+* make factorial and fib / recursive functions work 
+* id really like to make trace work but idk how 
+* make pattern matching for __ (BlankSequence) and ___ (BlankNullSequence)
+* need a ClearAll 
 
 
-
+here is an example of cas3 successfully computing the nand truth table using the s and k combinators
 ```scheme
 (set xb (pattern x (blank)))
 (set yb (pattern y (blank)))
@@ -56,27 +64,13 @@ random todo - not critical for combinator reduction
 (set rule2 (rule l2 r2))
 (set crules (list rule1 rule2))
 
+(set crules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
+(set nand ((s (s (k (s ((s s) (s (k (k k)))))))) s))
 
-
-(set ex ((((s s) k) k) k))
+(rr ((nand (s k)) (s k)) crules)
+(rr ((nand (s k)) k) crules)
+(rr ((nand k) (s k)) crules)
+(rr ((nand k) k) crules)
 
 ```
 
-s[s][k][k][k]
-
-((((s s) k) k) k)
-
-s and k rules
-
-(list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))
-
-(rr ((((s s) k) k) k) (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
-
-the goal is to make this reduce to 
-
-(((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank)))
-
-(((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank)))
-
-(In 28) := (replace_all ((((s s) k) k) k) (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))))
-(Out 28) = (((x z) (y z)) k)

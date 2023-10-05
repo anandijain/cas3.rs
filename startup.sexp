@@ -1,17 +1,20 @@
+(set (attrs setd) (list HoldAll))
+(set (attrs clear) (list HoldAll))
+
 (set (attrs True) (list locked protected))
 (set (attrs False) (list locked protected))
 
-(set (and True True) True)
-(set (and True False) False)
-(set (and False True) False)
-(set (and False False) False)
+(set (And True True) True)
+(set (And True False) False)
+(set (And False True) False)
+(set (And False False) False)
 
-(set (or True True) True)
-(set (or True False) True)
-(set (or False True) True)
-(set (or False False) False)
+(set (Or True True) True)
+(set (Or True False) True)
+(set (Or False True) True)
+(set (Or False False) False)
 
-(set (not True) False)
-(set (not False) True)
+(set (Not True) False)
+(set (Not False) True)
 
-(set (not (not (pattern x (blank)))) x)
+(set (Not (Not (pattern x (blank)))) x)

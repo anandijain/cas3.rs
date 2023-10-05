@@ -292,20 +292,20 @@ pub fn internal_functions_apply(
         todo!()
     }
     // need to hold our args first otherwise (set x 1) (clear x) ends up being (clear 1) which makes no sense
-    // else if nh == sym("clear") {
-    //     match &evaluated_args[0] {
-    //         Expr::Sym(ref s) => {
-    //             if let Some(te) =  ctx.vars.get_mut(&evaluated_args[0]) {
-    //                 te.own = None;
-    //             }
-    //             return sym("Null");
-    //         }
-    //         _ => {
-    //             println!("set takes a symbol");
-    //             return sym("$Failed");
-    //         }
-    //     }
-    // }
+    else if nh == sym("clear") {
+        match &evaluated_args[0] {
+            Expr::Sym(ref s) => {
+                if let Some(te) =  ctx.vars.get_mut(&evaluated_args[0]) {
+                    te.own = None;
+                }
+                return sym("Null");
+            }
+            _ => {
+                println!("set takes a symbol");
+                return sym("$Failed");
+            }
+        }
+    }
     else {
         return Expr::List(
             std::iter::once(nh.clone())
@@ -774,7 +774,7 @@ fn main() -> Result<()> {
         vars: HashMap::new(),
     };
 
-    // startup(&mut ctx, Path::new("startup.sexp"))?;
+    startup(&mut ctx, Path::new("startup.sexp"))?;
     startup_attrs(&mut ctx);
     run(rl, ctx)?;
     Ok(())

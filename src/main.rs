@@ -233,7 +233,7 @@ pub fn internal_functions_apply(
         let lhs = &evaluated_args[0];
         match lhs {
             Expr::Sym(ref s) => {
-                // pretty sure this needs to be fixed to check if te already exists 
+                // pretty sure this needs to be fixed to check if te already exists
                 let mut te = TableEntry::new();
                 te.own = Some(evaluated_args[1].clone());
                 ctx.vars.insert(sym(s), te);
@@ -252,14 +252,16 @@ pub fn internal_functions_apply(
                         // (rule_delayed (holdpattern evaluated_args[0]) evaluated_args[1])
                         let rhs = &evaluated_args[1];
                         // onto the downvalues of h (which is expected to have head list)
-                        let te: &mut TableEntry =
-                            ctx.vars.entry(lhs_h.clone()).or_insert_with(TableEntry::new);
+                        let te: &mut TableEntry = ctx
+                            .vars
+                            .entry(lhs_h.clone())
+                            .or_insert_with(TableEntry::new);
                         let dv_str = format!("(rule_delayed (hold_pattern {lhs}) {rhs})");
                         let dv = expr_parser::Expr(&dv_str).unwrap();
 
-                        // NOTE! here we aren't inserting in the right order, where we look for more specific 
+                        // NOTE! here we aren't inserting in the right order, where we look for more specific
                         // definitions and insert them first. so user has to do the right order themselves
-                        // at the moment 
+                        // at the moment
                         te.down.push(dv);
                         return rhs.clone();
                     }
@@ -276,13 +278,18 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("own_values") {
-        ctx.vars.get(&evaluated_args[0]).unwrap().own.clone().unwrap()
+        ctx.vars
+            .get(&evaluated_args[0])
+            .unwrap()
+            .own
+            .clone()
+            .unwrap()
         // todo!()
     } else if nh == sym("down_values") {
         ctx.vars.get(&evaluated_args[0]).unwrap().down.clone()
     } else if nh == sym("sub_values") {
         todo!()
-    } 
+    }
     // need to hold our args first otherwise (set x 1) (clear x) ends up being (clear 1) which makes no sense
     // else if nh == sym("clear") {
     //     match &evaluated_args[0] {
@@ -339,7 +346,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     return sym("$Failed");
                 }
                 // step 5
-                let nh = evaluate(stack, ctx, h);
+                let mut nh = evaluate(stack, ctx, h);
 
                 // step 6
                 // the use of a separate stack here is questionable
@@ -348,7 +355,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 
                 // the most important next step here is making sure that (attrs set) works correctly
 
-                // note that something here causes SO 
+                // note that something here causes SO
                 // let nh_attrs = evaluate(
                 //     &mut Expr::List(vec![sym("list")]),
                 //     ctx,
@@ -387,14 +394,40 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     }
                 }
 
-                // step 14
-                // ex = match nh {
-                //     // we dont need to panic here "abc"[foo] doesn't
-                //     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
-                //     Expr::Sym(ref s) => apply_downvalues(stack, ctx, nh, &evaluated_args),
-                //     Expr::List(ref head_args) => apply_subvalues(stack, ctx, nh, &evaluated_args),
-                // };
+                let mut reconstructed_ex = Expr::List(
+                    std::iter::once(nh.clone())
+                        .chain(evaluated_args.clone().to_owned())
+                        .collect(),
+                );
 
+                // step 14
+                ex = match nh {
+                    // we dont need to panic here "abc"[foo] doesn't
+                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
+                    // this is the down_value case, bcause the head
+                    Expr::Sym(ref s) => {
+                        let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
+                        let dvs = &te.down;
+                        // println!("looking for user defined down_values for {} -> {}", s, dvs);
+
+                        // should this be replace_all? or replace_repeated?
+                        
+                        let exprime = replace_all(&reconstructed_ex, dvs);
+                        // println!("before: {}", reconstructed_ex);
+                        // println!("after: {}", exprime);
+                        exprime
+                    }
+                    Expr::List(ref head_args) => ex,
+                };
+                // note now that ex is not necesarily a List anymore
+                // so if we still have a list, then we do step 15, and apply internal down/subvalues
+
+                match ex {
+                    Expr::List(_) => {},
+                    _ => continue,
+                }
+                nh = head(&ex);
+                evaluated_args = ex[1..].to_vec();
                 // this corresponds to step 15 in Wagner's main eval loop section
                 // where we apply internal/builtin down and subvalues
                 ex = internal_functions_apply(stack, ctx, nh, evaluated_args);
@@ -408,10 +441,13 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 // this whole thing needs to be rewritten
 // just a total mess
 fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
+
+    // this is questionable
     let mut pattern_expr = pattern_ex.clone();
     if head(&pattern_expr) == sym("hold_pattern") {
         pattern_expr = pattern_expr[1].clone();
     }
+    
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
             if p_list.len() == 1 {
@@ -515,18 +551,11 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
 
     for rule in rules_list {
         let mut bindings = HashMap::new();
-        println!("rule: {}", rule);
+        // println!("rule: {}", rule);
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
         if is_match(expr, &rule[1], &mut bindings) {
             let mut new_expr = rule[2].clone();
             new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
-            // println!("bindings: {:?} expr: {}", bindings, new_expr);
-            // for (name, binding) in bindings.clone() {
-            //     new_expr = replace(
-            //         &new_expr,
-            //         &Expr::List(vec![sym("rule"), sym(&name), binding]),
-            //     );
-            // }
 
             return new_expr;
         }
@@ -643,7 +672,7 @@ pub fn run(
         match line {
             Ok(l) => {
                 rl.add_history_entry(l.as_str()).unwrap(); // history
-                // saving every line (even if slow, just until its more stable)
+                                                           // saving every line (even if slow, just until its more stable)
                 rl.save_history("history.txt").unwrap();
 
                 let ex = expr_parser::Expr(&l);
@@ -656,11 +685,12 @@ pub fn run(
                         // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
                         // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
                         // evaluate(&mut ctx, &in_i);
-                        // let out_i =
-                        //     expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str()).unwrap();
-                        // evaluate(&mut ctx, &out_i);
+                        let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
+                            .unwrap();
+                        evaluate(&mut stack, &mut ctx, &out_i);
 
-                        println!("(Out {i}) = {}", res);
+                        println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
+
                         i += 1;
                     }
 

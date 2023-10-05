@@ -230,7 +230,7 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("set") {
-        println!("evaluated_args: {:?}", evaluated_args);
+        // println!("evaluated_args: {:?}", evaluated_args);
         let lhs = &evaluated_args[0];
         match lhs {
             Expr::Sym(ref s) => {
@@ -373,17 +373,19 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 let mut nh_attrs = Expr::List(vec![sym("list")]);
 
                 if let Expr::Sym(head_tmp) = nh.clone() {
-                    let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
+                    let te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
+                    // (down_values attrs)
                     let dvs = &te.down;
                     let attr_expr =
                         expr_parser::Expr(&format!("(attrs {})", nh).to_string()).unwrap();
-
+                    // println!("attr_expr: {}", attr_expr);
                     if let Expr::List(_ls) = dvs {
                         // dv expected to be (rule_delayed (hold_pattern lhs) rhs)
                         for dv in &_ls[1..] {
                             let mut bindings = HashMap::new();
                             if is_match(&attr_expr, &dv[1], &mut bindings) {
-                                nh_attrs = replace(&attr_expr, dv); // replace function should return the replaced expression
+                                // println!("found attributes match for {} -> {}", nh, dv);
+                                nh_attrs = replace(&attr_expr, dv);
                                 break; // Exit the loop once a match is found
                             }
                         }
@@ -392,15 +394,15 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     }
                 }
 
-                println!("nh_attrs: {:?}", nh_attrs);
+                // println!("nh_attrs: {:?}", nh_attrs);
                 // assert!(head(&nh_attrs) == sym("list"));
                 if nh_attrs.contains(&sym("HoldAllComplete")) {
                     // skip to 14
                     todo!();
                 }
 
+                
                 // step 7
-
                 let mut evaluated_args = vec![];
 
                 // hold_mask entry with a zero means "don't hold"
@@ -411,13 +413,12 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     hold_mask.fill(true);
                 }
                 if nh_attrs.contains(&sym("HoldFirst")) {
-                    println!("got a hold first");
                     hold_mask[0] = true;
                 }
                 if nh_attrs.contains(&sym("HoldRest")) {
                     hold_mask[1..].fill(true);
                 }
-
+                // println!("hold_mask: {:?}", hold_mask);
                 for (i, p) in ls[1..].iter().enumerate() {
                     if hold_mask[i] {
                         evaluated_args.push(p.clone());
@@ -637,9 +638,11 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
 pub fn startup_attrs(ctx: &mut Context2) {
     let mut attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
     let mut exs = vec![
-        format!("(rule_delayed (hold_pattern (attrs attrs)) (list HoldAll))"),
         format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
+        format!("(rule_delayed (hold_pattern (attrs attrs)) (list HoldAll))"),
+        format!("(rule_delayed (hold_pattern (attrs rule_delayed)) (list HoldRest))"),
         format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst))"),
+        format!("(rule_delayed (hold_pattern (attrs down_values)) (list HoldAll))"),
     ]
     .iter_mut()
     .map(|s| expr_parser::Expr(&s).unwrap())

@@ -230,6 +230,7 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("set") {
+        println!("evaluated_args: {:?}", evaluated_args);
         let lhs = &evaluated_args[0];
         match lhs {
             Expr::Sym(ref s) => {
@@ -273,7 +274,7 @@ pub fn internal_functions_apply(
                 }
             }
             _ => {
-                println!("set takes a symbol or list");
+                println!("set takes a symbol or list, got {}", lhs);
                 return sym("$Failed");
             }
         }
@@ -354,19 +355,49 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // but for practical purposes shouldn't cause a problem
 
                 // the most important next step here is making sure that (attrs set) works correctly
-
                 // note that something here causes SO
-                // let nh_attrs = evaluate(
-                //     &mut Expr::List(vec![sym("list")]),
-                //     ctx,
-                //     &expr_parser::Expr(&format!("(attrs {})", nh).to_string()).unwrap(),
-                // );
-                // println!("nh_attrs: {:?}", nh_attrs);
+
+                // a potential problem here is that nh is not necesarily an atom
+                // nh can be Expr::List
+
+                // 3a (we might be able to just replace_all((attrs h) (down_values attrs)))
+                // nvm 3a is less easy to see that a match wastn found
+
+                // println!("hi");
+
+                // 1. assume h::Sym
+                // 2. get dvs of attr
+                // 3. find a matching rule in dvs to (attrs h)
+                // if no matching rule found, return "(list)"
+
+                let mut nh_attrs = Expr::List(vec![sym("list")]);
+
+                if let Expr::Sym(head_tmp) = nh.clone() {
+                    let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
+                    let dvs = &te.down;
+                    let attr_expr =
+                        expr_parser::Expr(&format!("(attrs {})", nh).to_string()).unwrap();
+
+                    if let Expr::List(_ls) = dvs {
+                        // dv expected to be (rule_delayed (hold_pattern lhs) rhs)
+                        for dv in &_ls[1..] {
+                            let mut bindings = HashMap::new();
+                            if is_match(&attr_expr, &dv[1], &mut bindings) {
+                                nh_attrs = replace(&attr_expr, dv); // replace function should return the replaced expression
+                                break; // Exit the loop once a match is found
+                            }
+                        }
+                    } else {
+                        panic!("downvalues must be a list");
+                    }
+                }
+
+                println!("nh_attrs: {:?}", nh_attrs);
                 // assert!(head(&nh_attrs) == sym("list"));
-                // if nh_attrs.contains(&sym("HoldAllComplete")) {
-                //     // skip to 14
-                //     todo!();
-                // }
+                if nh_attrs.contains(&sym("HoldAllComplete")) {
+                    // skip to 14
+                    todo!();
+                }
 
                 // step 7
 
@@ -376,15 +407,16 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 let mut hold_mask = vec![false; ls.len() - 1];
 
                 // idk if it should be else ifs
-                // if nh_attrs.contains(&sym("HoldAll")) {
-                //     hold_mask.fill(true);
-                // }
-                // if nh_attrs.contains(&sym("HoldFirst")) {
-                //     hold_mask[0] = true;
-                // }
-                // if nh_attrs.contains(&sym("HoldRest")) {
-                //     hold_mask[1..].fill(true);
-                // }
+                if nh_attrs.contains(&sym("HoldAll")) {
+                    hold_mask.fill(true);
+                }
+                if nh_attrs.contains(&sym("HoldFirst")) {
+                    println!("got a hold first");
+                    hold_mask[0] = true;
+                }
+                if nh_attrs.contains(&sym("HoldRest")) {
+                    hold_mask[1..].fill(true);
+                }
 
                 for (i, p) in ls[1..].iter().enumerate() {
                     if hold_mask[i] {
@@ -401,17 +433,17 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 );
 
                 // step 14
-                ex = match nh {
+                ex = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
                     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
                     // this is the down_value case, bcause the head
-                    Expr::Sym(ref s) => {
+                    Expr::Sym(s) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
                         let dvs = &te.down;
                         // println!("looking for user defined down_values for {} -> {}", s, dvs);
 
                         // should this be replace_all? or replace_repeated?
-                        
+
                         let exprime = replace_all(&reconstructed_ex, dvs);
                         // println!("before: {}", reconstructed_ex);
                         // println!("after: {}", exprime);
@@ -423,7 +455,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // so if we still have a list, then we do step 15, and apply internal down/subvalues
 
                 match ex {
-                    Expr::List(_) => {},
+                    Expr::List(_) => {}
                     _ => continue,
                 }
                 nh = head(&ex);
@@ -441,13 +473,12 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 // this whole thing needs to be rewritten
 // just a total mess
 fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
-
     // this is questionable
     let mut pattern_expr = pattern_ex.clone();
     if head(&pattern_expr) == sym("hold_pattern") {
         pattern_expr = pattern_expr[1].clone();
     }
-    
+
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
             if p_list.len() == 1 {
@@ -603,6 +634,19 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
     current_expr
 }
 
+pub fn startup_attrs(ctx: &mut Context2) {
+    let mut attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
+    let mut exs = vec![
+        format!("(rule_delayed (hold_pattern (attrs attrs)) (list HoldAll))"),
+        format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
+        format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst))"),
+    ]
+    .iter_mut()
+    .map(|s| expr_parser::Expr(&s).unwrap())
+    .collect();
+    attrs_te.down.append(&mut exs);
+}
+
 #[derive(Helper, Completer, Hinter, Validator)]
 pub struct ReplHelper {
     highlighter: MatchingBracketHighlighter,
@@ -685,9 +729,9 @@ pub fn run(
                         // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
                         // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
                         // evaluate(&mut ctx, &in_i);
-                        let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
-                            .unwrap();
-                        evaluate(&mut stack, &mut ctx, &out_i);
+                        // let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
+                        //     .unwrap();
+                        // evaluate(&mut stack, &mut ctx, &out_i);
 
                         println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
 
@@ -723,11 +767,12 @@ fn main() -> Result<()> {
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
     }
-    let ctx = Context2 {
+    let mut ctx = Context2 {
         vars: HashMap::new(),
     };
 
     // startup(&mut ctx, Path::new("startup.sexp"))?;
+    startup_attrs(&mut ctx);
     run(rl, ctx)?;
     Ok(())
 }

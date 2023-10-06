@@ -156,40 +156,22 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     }
 }
 
-// pub fn get_downvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
-//     let te = ctx.vars.get(&sym);
-//     if let Some(te) = te {
-//         let rule = te.down.clone();
-//         if let Expr::List(rule) = rule {
-//             Some(Expr::List(rule.to_vec()))
-//         } else {
-//             None
-//         }
-//     } else {
-//         None
-//     }
-// }
 
-// pub fn get_subvalues(ctx: &Context2, sym: Expr) -> Option<Expr> {
-//     let te = ctx.vars.get(&sym);
-//     if let Some(te) = te {
-//         let rule = te.sub.clone();
-//         if let Expr::List(rule) = rule {
-//             Some(Expr::List(rule.to_vec()))
-//         } else {
-//             None
-//         }
-//     } else {
-//         None
-//     }
-// }
-
+// are we guaranteed that we have a list here?
+// can evaluated_args be empty 
+// nh can be List too
 pub fn internal_functions_apply(
     stack: &mut Expr,
     ctx: &mut Context2,
     nh: Expr,
     evaluated_args: Vec<Expr>,
 ) -> Expr {
+    let reconstructed_ex = Expr::List(
+        std::iter::once(nh.clone())
+            .chain(evaluated_args.clone().to_owned())
+            .collect(),
+    );
+
     if nh == sym("matchq") {
         // assert!(evaluated_args.len() == 2);
         if evaluated_args.len() != 2 {
@@ -314,7 +296,7 @@ pub fn internal_functions_apply(
     } else if nh == sym("Plus") {
         match (&evaluated_args[0], &evaluated_args[1]) {
             (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.add(b).into()),
-            // see issue about 3.0 printing as `3` 
+            // see issue about 3.0 printing as `3`
             // (Expr::Real(a), Expr::Real(b)) => Expr::Real(a + b),
             _ => {
                 let reconstructed_ex = Expr::List(
@@ -325,20 +307,35 @@ pub fn internal_functions_apply(
                 return reconstructed_ex;
             }
         }
-    }else if nh == sym("Times") {
+    } else if nh == sym("Times") {
         match (&evaluated_args[0], &evaluated_args[1]) {
             (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.mul(b).into()),
             _ => {
-                let reconstructed_ex = Expr::List(
-                    std::iter::once(nh.clone())
-                        .chain(evaluated_args.clone().to_owned())
-                        .collect(),
-                );
                 return reconstructed_ex;
             }
         }
-    }
-     else {
+    } else if nh == sym("Part") {
+        match &evaluated_args[0] {
+            Expr::List(ls) => {
+                let index = &evaluated_args[1];
+                match index {
+                    Expr::Int(i) => {
+                        let i = i.to_isize().unwrap();
+                        if i < 0 || i > ls.len() as isize {
+                            println!("Part: index {} out of range", i);
+                            return reconstructed_ex
+                        }
+                        return ls[i as usize].clone();
+                    }
+                    _ => {
+                        println!("Part: index must be an integer");
+                        reconstructed_ex
+                    }
+                }
+            }
+            _ => reconstructed_ex
+        }
+    } else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())

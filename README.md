@@ -55,7 +55,7 @@ random todo - not critical for combinator reduction
 * subvalues 
 * options 
 * caching/memoization. fib[3] gets cached in the evaluation of fib[5]. can see this by looking at DownValues
-* `Block` and `Module` 
+* `Block` and `Module` . todo- find the post that shows it, i cant find it atm 
 * fix nonsense that printing 3.0 actually prints `3` which is indistinguishable from exact 3
 * its time to take a real look at how we insert values into symbol table. for instance redefining a function (downvalue) just pushes, so the old one still matches even though its the one you dont want 
 
@@ -63,8 +63,9 @@ completed:
 * evaluataion control
 * attributes system (mainly just hold*, i don't need listable yet)
 * basic clear function
+* integers have arbitrary width 
 
-Here are some examples of how to use the language. 
+Here are some examples of how to use the language. see startup.sexp or tests for more 
 
 (pretty sure my nand is incorrectly translated)
 ```scheme
@@ -94,6 +95,8 @@ Here are some examples of how to use the language.
 (set (fib 1) 1)
 (set (fib (pattern n (blank Int))) (Plus (fib (Plus n -2)) (fib (Plus n -1))))
 (fib 10)
+
+
 ```
 
 need to fix panic. 

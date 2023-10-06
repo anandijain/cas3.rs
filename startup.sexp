@@ -20,3 +20,9 @@
 (set (Not False) True)
 
 (set (Not (Not (pattern x (blank)))) x)
+
+(set (Nest f x 0) x)
+(set (Nest f x (pattern n (blank Int))) (f (Nest f x (Plus n -1))))
+
+(set (Fac 1) 1)
+(set (Fac (pattern n (blank Int))) (Times n (Fac (Plus n -1))))

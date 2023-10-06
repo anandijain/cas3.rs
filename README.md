@@ -33,22 +33,34 @@ or
 EXPR //. {s[x_][y_][z_] -> x[z][y[z]], k[x_][y_] -> x}
 ```
 
+goals of project:
+* simulate a variety of the computational systems in NKS (cellular automata, combinators, turing machines, etc)
+* provide a simple educational example for how to build a symbolic language and how the wolfram language works
+    - personally, I think this is already a much better example than Mathics 
+
 random todo - not critical for combinator reduction
 
 * improve parser (whitespace and EOF robustness) - infix/m-expr if im feeling naughty
-* arb numerics- switch to rug/gmp for all number types 
+* arb numerics- switch to rug/gmp for all number types - this will be a journey 
 * string escaping 
 * levels have a simple structure that spans wl. like replace with {{}} makes a list applying rules separately, 
-* having x_Head syntax would be really nice 
+* having x_Head infix syntax would be really nice 
 * being able to paste in multiple expressions and have them all evaluate
-* real attributes system (mainly just hold*, i don't need listable)
-* evaluataion control
 * list operations
-* make factorial and fib / recursive functions work 
+* make factorial and fib / recursive functions work (depends on numerics)
 * id really like to make trace work but idk how 
 * make pattern matching for __ (BlankSequence) and ___ (BlankNullSequence)
-* need a ClearAll 
+* need a ClearAll
+* Function for anonymous functions
+* subvalues 
+* options 
+* caching/memoization. fib[3] gets cached in the evaluation of fib[5]. can see this by looking at DownValues
+* `Block` and `Module` 
 
+completed:
+* evaluataion control
+* attributes system (mainly just hold*, i don't need listable yet)
+* basic clear function
 
 here is an example of cas3 successfully computing the nand truth table using the s and k combinators
 ```scheme
@@ -74,3 +86,15 @@ here is an example of cas3 successfully computing the nand truth table using the
 
 ```
 
+need to fix panic. 
+in wl this returns: `{s[x_][y_][z_]->1[z][y[z]],k[x_][y_]->1}`
+
+```scheme
+(set x 1)
+
+(set crules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
+
+thread 'main' panicked at 'head must be a symbol, got 1', src/main.rs:437:68
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+```

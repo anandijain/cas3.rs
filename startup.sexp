@@ -1,5 +1,7 @@
 (set (attrs setd) (list HoldAll))
 (set (attrs clear) (list HoldAll))
+(set (attrs hold) (list HoldAll))
+(set (attrs pattern) (list HoldFirst))
 
 (set (attrs True) (list locked protected))
 (set (attrs False) (list locked protected))

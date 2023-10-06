@@ -295,7 +295,7 @@ pub fn internal_functions_apply(
     else if nh == sym("clear") {
         match &evaluated_args[0] {
             Expr::Sym(ref s) => {
-                if let Some(te) =  ctx.vars.get_mut(&evaluated_args[0]) {
+                if let Some(te) = ctx.vars.get_mut(&evaluated_args[0]) {
                     te.own = None;
                 }
                 return sym("Null");
@@ -305,8 +305,7 @@ pub fn internal_functions_apply(
                 return sym("$Failed");
             }
         }
-    }
-    else {
+    } else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -401,7 +400,6 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     todo!();
                 }
 
-                
                 // step 7
                 let mut evaluated_args = vec![];
 
@@ -436,7 +434,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // step 14
                 ex = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
-                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol"),
+                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol, got {nh}"),
                     // this is the down_value case, bcause the head
                     Expr::Sym(s) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
@@ -730,11 +728,12 @@ pub fn run(
                         // println!("head: {}", head(&expr));
 
                         // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                        // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str()).unwrap();
-                        // evaluate(&mut ctx, &in_i);
-                        // let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
+                        // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
                         //     .unwrap();
-                        // evaluate(&mut stack, &mut ctx, &out_i);
+                        // evaluate(&mut stack, &mut ctx, &in_i);
+                        let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
+                            .unwrap();
+                        evaluate(&mut stack, &mut ctx, &out_i);
 
                         println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
 
@@ -927,8 +926,8 @@ mod tests {
             );
         }
 
-        // let nand = "s[s[k[s[s[s][s[k[k[k]]]]]]]][s]";
-        // (s (s (k (s (s s) (s (k (k k)))))))
+        // let nand = "s[ s[ k[ s[ s[ s][s[k[k[k]]]]]]]][s]";
+        //            (s (s (k (s (s  s) (s (k (k k)))))))
 
         let nand = "(((s s) (s (k (k k)))) s)";
         let nand = "(((s s) (s (k (k k)))) s)";

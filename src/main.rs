@@ -156,9 +156,8 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     }
 }
 
-
 // are we guaranteed that we have a list here?
-// can evaluated_args be empty 
+// can evaluated_args be empty
 // nh can be List too
 pub fn internal_functions_apply(
     stack: &mut Expr,
@@ -316,24 +315,41 @@ pub fn internal_functions_apply(
         }
     } else if nh == sym("Part") {
         match &evaluated_args[0] {
-            Expr::List(ls) => {
-                let index = &evaluated_args[1];
-                match index {
-                    Expr::Int(i) => {
-                        let i = i.to_isize().unwrap();
-                        if i < 0 || i > ls.len() as isize {
-                            println!("Part: index {} out of range", i);
-                            return reconstructed_ex
-                        }
-                        return ls[i as usize].clone();
+            Expr::List(ls) => match &evaluated_args[1] {
+                Expr::Int(i) => {
+                    let i = i.to_isize().unwrap();
+                    if i < 0 || i >= ls.len() as isize {
+                        println!("Part: index {} out of range", i);
+                        return reconstructed_ex;
                     }
-                    _ => {
-                        println!("Part: index must be an integer");
-                        reconstructed_ex
-                    }
+                    return ls[i as usize].clone();
                 }
-            }
-            _ => reconstructed_ex
+                Expr::List(indices) => {
+                    let mut results = vec![sym("list")];
+                    for index in indices[1..].iter() {
+                        match index {
+                            Expr::Int(i) => {
+                                let i = i.to_isize().unwrap();
+                                if i < 0 || i >= ls.len() as isize {
+                                    println!("Part: index {} out of range", i);
+                                    return reconstructed_ex;
+                                }
+                                results.push(ls[i as usize].clone());
+                            }
+                            _ => {
+                                println!("Part: each index in the list must be an integer");
+                                return reconstructed_ex;
+                            }
+                        }
+                    }
+                    return Expr::List(results);
+                }
+                _ => {
+                    println!("Part: index must be an integer or a list of integers");
+                    return reconstructed_ex;
+                }
+            },
+            _ => return reconstructed_ex,
         }
     } else {
         return Expr::List(

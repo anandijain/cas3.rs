@@ -8,4 +8,5 @@ edition = "2021"
 [dependencies]
 ordered-float = "4.1.0"
 peg = "0.8.1"
+rug = "1.22.0"
 rustyline = { version = "12.0.0", features = ["derive", "custom-bindings"] }

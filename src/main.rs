@@ -1,7 +1,11 @@
 extern crate peg;
-use std::borrow::Cow::{self, Borrowed, Owned};
+use std::{
+    borrow::Cow::{self, Borrowed, Owned},
+    ops::{Add, Mul},
+};
 
 use ordered_float;
+use rug::Integer;
 use rustyline::{
     error::ReadlineError,
     highlight::{Highlighter, MatchingBracketHighlighter},
@@ -43,7 +47,7 @@ peg::parser! {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expr {
-    Int(i64),
+    Int(Integer),
     Real(ordered_float::NotNan<f64>),
     Sym(String),
     Str(String),
@@ -268,7 +272,7 @@ pub fn internal_functions_apply(
                     }
                     // subvalue
                     Expr::List(ls2) => {
-                        todo!()
+                        todo!("subvalues")
                     }
                     _ => panic!("hi"),
                 }
@@ -297,6 +301,8 @@ pub fn internal_functions_apply(
             Expr::Sym(ref s) => {
                 if let Some(te) = ctx.vars.get_mut(&evaluated_args[0]) {
                     te.own = None;
+                    te.down = Expr::List(vec![sym("list")]);
+                    te.sub = Expr::List(vec![sym("list")]);
                 }
                 return sym("Null");
             }
@@ -305,7 +311,34 @@ pub fn internal_functions_apply(
                 return sym("$Failed");
             }
         }
-    } else {
+    } else if nh == sym("Plus") {
+        match (&evaluated_args[0], &evaluated_args[1]) {
+            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.add(b).into()),
+            // see issue about 3.0 printing as `3` 
+            // (Expr::Real(a), Expr::Real(b)) => Expr::Real(a + b),
+            _ => {
+                let reconstructed_ex = Expr::List(
+                    std::iter::once(nh.clone())
+                        .chain(evaluated_args.clone().to_owned())
+                        .collect(),
+                );
+                return reconstructed_ex;
+            }
+        }
+    }else if nh == sym("Times") {
+        match (&evaluated_args[0], &evaluated_args[1]) {
+            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.mul(b).into()),
+            _ => {
+                let reconstructed_ex = Expr::List(
+                    std::iter::once(nh.clone())
+                        .chain(evaluated_args.clone().to_owned())
+                        .collect(),
+                );
+                return reconstructed_ex;
+            }
+        }
+    }
+     else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -434,7 +467,9 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // step 14
                 ex = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
-                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => panic!("head must be a symbol, got {nh}"),
+                    Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
+                        panic!("head must be a symbol, got {nh}")
+                    }
                     // this is the down_value case, bcause the head
                     Expr::Sym(s) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);

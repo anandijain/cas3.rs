@@ -56,13 +56,17 @@ random todo - not critical for combinator reduction
 * options 
 * caching/memoization. fib[3] gets cached in the evaluation of fib[5]. can see this by looking at DownValues
 * `Block` and `Module` 
+* fix nonsense that printing 3.0 actually prints `3` which is indistinguishable from exact 3
+* its time to take a real look at how we insert values into symbol table. for instance redefining a function (downvalue) just pushes, so the old one still matches even though its the one you dont want 
 
 completed:
 * evaluataion control
 * attributes system (mainly just hold*, i don't need listable yet)
 * basic clear function
 
-here is an example of cas3 successfully computing the nand truth table using the s and k combinators
+Here are some examples of how to use the language. 
+
+(pretty sure my nand is incorrectly translated)
 ```scheme
 (set xb (pattern x (blank)))
 (set yb (pattern y (blank)))
@@ -79,11 +83,17 @@ here is an example of cas3 successfully computing the nand truth table using the
 (set crules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
 (set nand ((s (s (k (s ((s s) (s (k (k k)))))))) s))
 
+
 (rr ((nand (s k)) (s k)) crules)
 (rr ((nand (s k)) k) crules)
 (rr ((nand k) (s k)) crules)
 (rr ((nand k) k) crules)
 
+
+(set (fib 0) 0)
+(set (fib 1) 1)
+(set (fib (pattern n (blank Int))) (Plus (fib (Plus n -2)) (fib (Plus n -1))))
+(fib 10)
 ```
 
 need to fix panic. 

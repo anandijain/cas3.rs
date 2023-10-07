@@ -47,7 +47,6 @@ random todo - not critical for combinator reduction
 * having x_Head infix syntax would be really nice 
 * being able to paste in multiple expressions and have them all evaluate
 * list operations
-* make factorial and fib / recursive functions work (depends on numerics)
 * id really like to make trace work but idk how 
 * make pattern matching for __ (BlankSequence) and ___ (BlankNullSequence)
 * need a ClearAll
@@ -58,12 +57,16 @@ random todo - not critical for combinator reduction
 * `Block` and `Module` . todo- find the post that shows it, i cant find it atm 
 * fix nonsense that printing 3.0 actually prints `3` which is indistinguishable from exact 3
 * its time to take a real look at how we insert values into symbol table. for instance redefining a function (downvalue) just pushes, so the old one still matches even though its the one you dont want 
+* Cases and Position
+* tab completion 
+* ReleaseHold
 
 completed:
 * evaluataion control
 * attributes system (mainly just hold*, i don't need listable yet)
 * basic clear function
 * integers have arbitrary width 
+* make factorial and fib / recursive functions work (depends on numerics)
 
 Here are some examples of how to use the language. see startup.sexp or tests for more 
 
@@ -96,6 +99,8 @@ Here are some examples of how to use the language. see startup.sexp or tests for
 (set (fib (pattern n (blank Int))) (Plus (fib (Plus n -2)) (fib (Plus n -1))))
 (fib 10)
 
+
+(set (Part (pattern xs (blank list)) All) xs)
 
 ```
 

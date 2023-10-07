@@ -266,7 +266,7 @@ pub fn internal_functions_apply(
     } else if nh == sym("own_values") {
         ctx.vars
             .get(&evaluated_args[0])
-            .unwrap()
+            .unwrap() // there is a bug here
             .own
             .clone()
             .unwrap()
@@ -467,10 +467,23 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     if hold_mask[i] {
                         evaluated_args.push(p.clone());
                     } else {
-                        evaluated_args.push(evaluate(stack, ctx, p));
+                        let ev = evaluate(stack, ctx, p);
+
+                        evaluated_args.push(ev);
                     }
                 }
 
+                if !nh_attrs.contains(&sym("SequenceHold")) {
+                    let mut arg_idx = 0;
+                    while arg_idx < evaluated_args.len() {
+                        if head(&evaluated_args[arg_idx]) == sym("Sequence") {
+                            let seq_args: Vec<_> = evaluated_args[arg_idx][1..].to_vec();
+                            evaluated_args.splice(arg_idx..arg_idx + 1, seq_args);
+                        } else {
+                            arg_idx += 1;
+                        }
+                    }
+                }
                 let mut reconstructed_ex = Expr::List(
                     std::iter::once(nh.clone())
                         .chain(evaluated_args.clone().to_owned())
@@ -686,8 +699,8 @@ pub fn startup_attrs(ctx: &mut Context2) {
     let mut exs = vec![
         format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
         format!("(rule_delayed (hold_pattern (attrs attrs)) (list HoldAll))"),
-        format!("(rule_delayed (hold_pattern (attrs rule_delayed)) (list HoldRest))"),
-        format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst))"),
+        format!("(rule_delayed (hold_pattern (attrs rule_delayed)) (list HoldRest SequenceHold))"),
+        format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst SequenceHold))"),
         format!("(rule_delayed (hold_pattern (attrs down_values)) (list HoldAll))"),
     ]
     .iter_mut()
@@ -895,6 +908,9 @@ mod tests {
             evalparse("(matchq (list x) (pattern x (blank list)))"),
             sym("true")
         );
+
+        // blank doesnt match the here, which is correct. triple_blank would match this
+        assert_eq!(evalparse("(matchq (f) (f (blank)))"), sym("false"));
     }
 
     #[test]
@@ -985,6 +1001,22 @@ mod tests {
         let b = "k";
         let s = format!("(({nand} {a}) {b})");
         println!("{}", s);
+    }
+
+    #[test]
+    fn list_ops() {
+        assert_eq!(
+            evalparse("(sameq (Part (f x y z) (list 1 2 3)) (list x y z))"),
+            sym("true")
+        );
+    }
+
+    #[test]
+    fn evaluation() {
+        assert_eq!(
+            evalparse("(sameq (f (Sequence a b) c (Sequence d e)) (f a b c d e))"),
+            sym("true")
+        );
     }
 }
 

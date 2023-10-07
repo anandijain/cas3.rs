@@ -160,7 +160,7 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
 // can evaluated_args be empty
 // nh can be List too
 pub fn internal_functions_apply(
-    stack: &mut Expr,
+    _stack: &mut Expr,
     ctx: &mut Context2,
     nh: Expr,
     evaluated_args: Vec<Expr>,
@@ -252,7 +252,7 @@ pub fn internal_functions_apply(
                         return rhs.clone();
                     }
                     // subvalue
-                    Expr::List(ls2) => {
+                    Expr::List(_) => {
                         todo!("subvalues")
                     }
                     _ => panic!("hi"),
@@ -279,7 +279,7 @@ pub fn internal_functions_apply(
     // need to hold our args first otherwise (set x 1) (clear x) ends up being (clear 1) which makes no sense
     else if nh == sym("clear") {
         match &evaluated_args[0] {
-            Expr::Sym(ref s) => {
+            Expr::Sym(_) => {
                 if let Some(te) = ctx.vars.get_mut(&evaluated_args[0]) {
                     te.own = None;
                     te.down = Expr::List(vec![sym("list")]);
@@ -417,7 +417,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 
                 let mut nh_attrs = Expr::List(vec![sym("list")]);
 
-                if let Expr::Sym(head_tmp) = nh.clone() {
+                if let Expr::Sym(_) = nh.clone() {
                     let te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
                     // (down_values attrs)
                     let dvs = &te.down;
@@ -484,7 +484,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         }
                     }
                 }
-                let mut reconstructed_ex = Expr::List(
+                let reconstructed_ex = Expr::List(
                     std::iter::once(nh.clone())
                         .chain(evaluated_args.clone().to_owned())
                         .collect(),
@@ -497,7 +497,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         panic!("head must be a symbol, got {nh}")
                     }
                     // this is the down_value case, bcause the head
-                    Expr::Sym(s) => {
+                    Expr::Sym(_) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
                         let dvs = &te.down;
                         // println!("looking for user defined down_values for {} -> {}", s, dvs);
@@ -509,7 +509,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         // println!("after: {}", exprime);
                         exprime
                     }
-                    Expr::List(ref head_args) => ex,
+                    Expr::List(_) => ex,
                 };
                 // note now that ex is not necesarily a List anymore
                 // so if we still have a list, then we do step 15, and apply internal down/subvalues
@@ -541,6 +541,7 @@ fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>
 
     match (expr, pattern_expr) {
         (Expr::List(e_list), Expr::List(p_list)) => {
+            // println!("e_list: {:?}", e_list);
             if p_list.len() == 1 {
                 if let Expr::Sym(ref head) = p_list[0] {
                     if head == "blank" {
@@ -573,10 +574,14 @@ fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>
                             return true;
                         }
                     }
+                    //  else if p_head == "blank_null_seq" {
+                    //     return true;
+                    // }
                 }
             }
 
             if p_list.len() == 0 || e_list.len() != p_list.len() {
+                // println!("length case ");
                 return false;
             }
 
@@ -612,11 +617,7 @@ fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>
             }
             false
         }
-        (Expr::Sym(e), Expr::Sym(p)) => e == &p,
-        (Expr::Int(e), Expr::Int(p)) => e == &p,
-        (Expr::Real(e), Expr::Real(p)) => e == &p,
-        (Expr::Str(e), Expr::Str(p)) => e == &p,
-        _ => false,
+        (l, r) => l == &r,
     }
 }
 
@@ -695,7 +696,7 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
 }
 
 pub fn startup_attrs(ctx: &mut Context2) {
-    let mut attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
+    let attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
     let mut exs = vec![
         format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
         format!("(rule_delayed (hold_pattern (attrs attrs)) (list HoldAll))"),
@@ -888,6 +889,8 @@ mod tests {
         );
 
         assert_eq!(evalparse("(matchq (f (g 1)) (f (g (blank))))"), sym("true"));
+
+        // testing that patterns with the same name must equal the same matched expr 
         assert_eq!(
             evalparse("(matchq (f a a) (f (pattern x (blank)) (pattern x (blank))))"),
             sym("true")
@@ -993,14 +996,14 @@ mod tests {
         // let nand = "s[ s[ k[ s[ s[ s][s[k[k[k]]]]]]]][s]";
         //            (s (s (k (s (s  s) (s (k (k k)))))))
 
-        let nand = "(((s s) (s (k (k k)))) s)";
-        let nand = "(((s s) (s (k (k k)))) s)";
-        let nand = "(s (s (k (s (((s s) (s (k (k k)))))))) s)";
-        let nand = "(((s (s (k (((s (s s)) (s (k (k k)))))))) s)";
-        let a = "k";
-        let b = "k";
-        let s = format!("(({nand} {a}) {b})");
-        println!("{}", s);
+        // let nand = "(((s s) (s (k (k k)))) s)";
+        // let nand = "(((s s) (s (k (k k)))) s)";
+        // let nand = "(s (s (k (s (((s s) (s (k (k k)))))))) s)";
+        // let nand = "(((s (s (k (((s (s s)) (s (k (k k)))))))) s)";
+        // let a = "k";
+        // let b = "k";
+        // let s = format!("(({nand} {a}) {b})");
+        // println!("{}", s);
     }
 
     #[test]

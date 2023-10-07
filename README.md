@@ -116,3 +116,60 @@ thread 'main' panicked at 'head must be a symbol, got 1', src/main.rs:437:68
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 
 ```
+
+
+pattern matcher examples with __ and ___
+```wl
+In[7]:= MatchQ[g[a], g[a, ___]]
+
+Out[7]= True
+
+In[8]:= MatchQ[Null, _]
+
+Out[8]= True
+
+In[10]:= MatchQ[g[], g[___,_]]
+
+Out[10]= False
+
+In[11]:= MatchQ[g[a], g[___,_]]
+
+Out[11]= True
+
+In[12]:= ReplaceAll[g[a], g[xs___,x_]->{xs, x}]
+
+Out[12]= {a}
+
+In[14]:= ReplaceAll[g[a,b,c], g[xs__,x_]->{{xs}, {x}}]
+
+Out[14]= {{a,b},{c}}
+
+In[15]:= ReplaceAll[g[a,b,c], g[xs___,ys___,x_]->{{xs},{ys}, {x}}]
+
+Out[15]= {{},{a,b},{c}}
+
+In[27]:= ReplaceAll[g[a,b,c,d], g[xs__,ys___,x_]->{{xs},{ys}, {x}}]
+
+Out[27]= {{a},{b,c},{d}}
+
+In[34]:= ReplaceAll[g[a,b,a, b,c], g[xs__,xs___,x_]->{{xs},{xs}, {x}}]
+
+Out[34]= {{a,b},{a,b},{c}}
+
+In[38]:= ReplaceAll[g[a,b,c, a,b,d], g[xs__,ys___,xs__,x_]->{{xs},{ys}, {x}}]
+
+Out[38]= {{a,b},{c},{d}}
+
+In[39]:= ReplaceAll[g[a,b,c, a,b,d], g[xs___,ys___,xs___,x_]->{{xs},{ys}, {x}}]
+
+Out[39]= {{},{a,b,c,a,b},{d}}
+
+In[35]:= MatchQ[g[a,b,a,b],g[xs__,xs__]]
+
+Out[35]= True
+
+In[36]:= MatchQ[g[a,b,a,c],g[xs__,xs__]]
+
+Out[36]= False
+
+```

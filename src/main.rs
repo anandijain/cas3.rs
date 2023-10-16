@@ -1,8 +1,14 @@
 extern crate peg;
+
+use std::collections::HashMap;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::ops::{Deref, DerefMut};
 use std::{
-    borrow::Cow::{self, Borrowed, Owned},
-    ops::{Add, Mul},
+    borrow::Cow,
+    ops::{},
 };
+use std::{fmt, path::Path};
 
 use ordered_float;
 use rug::Integer;
@@ -12,11 +18,6 @@ use rustyline::{
     validate::MatchingBracketValidator,
     Completer, Editor, Helper, Hinter, Result, Validator,
 };
-use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
-use std::ops::{Deref, DerefMut};
-use std::{fmt, path::Path};
 
 peg::parser! {
     grammar expr_parser() for str {
@@ -45,8 +46,15 @@ peg::parser! {
     }
 }
 
+// to remove
 fn parse(s: &str) -> Expr {
     expr_parser::Expr(s).unwrap()
+}
+
+impl Expr {
+    fn parse(s: &str) -> Expr {
+        expr_parser::Expr(s).unwrap()
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -72,6 +80,9 @@ impl fmt::Display for Expr {
         }
     }
 }
+// (f a b) - Display
+// Expr::List(vec![Expr::Sym("f")]) - Debug
+// {:?}
 
 impl Deref for Expr {
     type Target = Vec<Expr>;
@@ -97,12 +108,17 @@ pub fn sym(s: &str) -> Expr {
     Expr::Sym(s.to_string())
 }
 
+// impl IntoIterator<Item = &str>
 fn list(strs: Vec<&str>) -> Expr {
     Expr::List(strs.iter().map(|s| sym(s)).collect::<Vec<_>>())
 }
 
-fn liste(es: Vec<Expr>) -> Expr {
-    Expr::List(es)
+fn liste(expressions: Vec<Expr>) -> Expr {
+    Expr::List(expressions)
+}
+
+fn error() -> Expr {
+    Expr::Sym("GET_FUCKED".to_string())
 }
 
 fn head(expr: &Expr) -> Expr {
@@ -124,8 +140,8 @@ fn head(expr: &Expr) -> Expr {
 
 // (a b c) -> (b c)
 // fn rest(expr: &Expr) -> Expr {}
-
 pub fn is_atom(expr: &Expr) -> bool {
+    // matches!(expr, Expr::List(_))
     match expr {
         Expr::List(_) => false,
         _ => true,
@@ -148,7 +164,7 @@ impl TableEntry {
     pub fn new() -> Self {
         Self {
             own: None,
-            down: Expr::List(vec![sym("list")]),
+            down: Expr::List(vec![sym("list")]), //Expr::from_expressions(), f[1] = "hello" f[x] = x f[_] = "hi"
             sub: Expr::List(vec![sym("list")]),
         }
     }
@@ -156,6 +172,7 @@ impl TableEntry {
 
 pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
     // println!("ctx: {:?}. sym: {}", ctx, sym);
+    // ctx.vars.get(&sym).map(|u| u.to_owned())
     let te = ctx.vars.get(&sym);
     if let Some(te) = te {
         let rule = te.own.clone();
@@ -321,7 +338,7 @@ pub fn internal_functions_apply(
         }
     } else if nh == sym("Plus") {
         match (&evaluated_args[0], &evaluated_args[1]) {
-            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.add(b).into()),
+            (Expr::Int(a), Expr::Int(b)) => Expr::Int((a + b).into()),
             // see issue about 3.0 printing as `3`
             // (Expr::Real(a), Expr::Real(b)) => Expr::Real(a + b),
             _ => {
@@ -334,11 +351,10 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("Times") {
+        // make variadic
         match (&evaluated_args[0], &evaluated_args[1]) {
-            (Expr::Int(a), Expr::Int(b)) => Expr::Int(a.mul(b).into()),
-            _ => {
-                return reconstructed_ex;
-            }
+            (Expr::Int(a), Expr::Int(b)) => Expr::Int(( a * b).into()),
+            _ => reconstructed_ex,
         }
     } else if nh == sym("Part") {
         match &evaluated_args[0] {
@@ -387,6 +403,7 @@ pub fn internal_functions_apply(
     }
 }
 
+// impl Expr { pub fn evaluate(&mut self, ...) -> Expr {...} }
 pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
     let mut last_ex = None;
@@ -1062,6 +1079,27 @@ pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
     rules
 }
 
+// pub struct ContextWhatever {
+//     bindings: HashMap<Expr, Expr>
+// }
+
+// impl ContextWhatever {
+//     pub fn pat_bindings_to_rules(&self) -> Expr {
+//         let mut rules = Expr::List(vec![sym("list")]);
+//         for (pat, binding) in bindings.clone() {
+//             if let Expr::List(ps) = pat {
+//                 let p_name = &ps[1]; // (pattern x (blank))
+//                 rules.push(Expr::List(vec![
+//                     sym("rule"),
+//                     p_name.clone(),
+//                     binding.clone(),
+//                 ]));
+//             }
+//         }
+//         rules
+//     }
+// }
+
 pub fn pat_bindings_to_rules(bindings: &HashMap<Expr, Expr>) -> Expr {
     let mut rules = Expr::List(vec![sym("list")]);
     for (pat, binding) in bindings.clone() {
@@ -1094,17 +1132,19 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
         // println!("rule: {}", rule);
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
         if is_match(expr, &rule[1], &mut bindings) {
-            let mut new_expr = rule[2].clone();
-            new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
-
-            return new_expr;
+            return replace_all(&rule[2], &bindings_to_rules(&bindings));
+            // let mut new_expr = rule[2].clone();
+            // new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
+            // return new_expr;
         }
     }
     expr.clone()
 }
 
+// &self
 pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
-    let rules_list = norm_rules(rules);
+    // &self
+    let rules_list = norm_rules(rules); // rules.normalize()
     for rule in rules_list {
         let mut bindings = HashMap::new();
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
@@ -1142,7 +1182,8 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
     }
     current_expr
 }
-
+// (set x 1)
+// (set x 2) -> (set 1 2)
 pub fn startup_attrs(ctx: &mut Context2) {
     let attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
     let mut exs = vec![
@@ -1173,14 +1214,14 @@ impl Highlighter for ReplHelper {
         default: bool,
     ) -> Cow<'b, str> {
         if default {
-            Borrowed(&self.colored_prompt)
+            Cow::Borrowed(&self.colored_prompt)
         } else {
-            Borrowed(prompt)
+            Cow::Borrowed(prompt)
         }
     }
 
     fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-        Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
+        Cow::Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
     }
 
     fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
@@ -1200,11 +1241,17 @@ pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
         match line {
             Ok(content) => {
                 if let Ok(ex) = &expr_parser::Expr(&content) {
-                    let mut stack = Expr::List(vec![]);
+                    // impl Expr {
+                    //     evaluate
+                    // }
+                    // ex.evaluate(Expr::list(), ctx)
+                    // Expr::list().evaluate(ctx, ex)
+                    let mut stack = Expr::List(vec![sym("list")]);
                     evaluate(&mut stack, ctx, ex);
                 }
             }
             Err(error) => {
+                // tracing::error!("")
                 eprintln!("Error reading a line: {:?}", error);
             }
         }
@@ -1227,8 +1274,10 @@ pub fn run(
         match line {
             Ok(l) => {
                 rl.add_history_entry(l.as_str()).unwrap(); // history
-                                                           // saving every line (even if slow, just until its more stable)
+
+                // saving every line (even if slow, just until its more stable)
                 rl.save_history("history.txt").unwrap();
+                // tracing::trace!({})
 
                 let ex = expr_parser::Expr(&l);
                 match ex {
@@ -1253,15 +1302,9 @@ pub fn run(
                     Err(err) => println!("Failed to parse: {}", err),
                 }
             }
-            Err(ReadlineError::Interrupted) => {
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                break;
-            }
-            Err(err) => {
-                println!("Error: {:?}", err);
-            }
+            Err(ReadlineError::Interrupted) => continue,
+            Err(ReadlineError::Eof) => break,
+            Err(err) => eprintln!("Error: {:?}", err),
         }
     } // loop
     Ok(())
@@ -1291,23 +1334,23 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-pub fn evalparse(s: &str) -> Expr {
-    let ex = expr_parser::Expr(s);
-    match ex {
-        Ok(expr) => {
-            let mut ctx = Context2 {
-                vars: HashMap::new(),
-            };
-            let mut stack = Expr::List(vec![]);
-            evaluate(&mut stack, &mut ctx, &expr)
-        }
-        Err(err) => panic!("Failed to parse: {}", err),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub fn evalparse(s: &str) -> Expr {
+        let ex = expr_parser::Expr(s);
+        match ex {
+            Ok(expr) => {
+                let mut ctx = Context2 {
+                    vars: HashMap::new(),
+                };
+                let mut stack = Expr::List(vec![]);
+                evaluate(&mut stack, &mut ctx, &expr)
+            }
+            Err(err) => panic!("Failed to parse: {}", err),
+        }
+    }
 
     #[test]
     fn test_pattern_matching() {

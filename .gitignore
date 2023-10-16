@@ -1,2 +1,19 @@
+# OS
+.DS_Store
+
+# IDE
+.fleet/
+.idea/
+.vscode/
+
+# Rust
+/debug
 /target
+**/*.rs.bk
+
+# Coverage
+/coverage
+build_rs_cov.profraw
+
+# Misc
 history.txt

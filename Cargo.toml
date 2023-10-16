@@ -1,12 +1,24 @@
+# https://doc.rust-lang.org/cargo/reference/manifest.html 
+
 [package]
 name = "cas3"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "cas3"
+path = "./src/main.rs"
+
+[[bin]]
+name = "cas4"
+path = "./main.rs"
 
 [dependencies]
+clap = { version = "4.4.6", features = ["derive"] }
 ordered-float = "4.1.0"
 peg = "0.8.1"
 rug = "1.22.0"
 rustyline = { version = "12.0.0", features = ["derive", "custom-bindings"] }
+tracing = "0.1.39"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

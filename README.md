@@ -9,6 +9,8 @@ https://reference.wolfram.com/language/tutorial/SomeNotesOnInternalImplementatio
 
 "In the standard evaluation procedure, the Wolfram System first evaluates the head of an expression and then evaluates each element of the expression. These elements are in general themselves expressions, to which the same evaluation procedure is recursively applied."
 
+"A pattern like f[x__,y__,z__] can match an expression like f[a,b,c,d,e] with several different choices of x, y, and z. The choices with x and y of minimum length are tried first. In general, when there are multiple __ or `___` in a single function, the case that is tried first takes all the __ and `___` to stand for sequences of minimum length, except the last one, which stands for "the rest" of the arguments."
+
 https://mathematica.stackexchange.com/questions/96/what-is-the-distinction-between-downvalues-upvalues-subvalues-and-ownvalues
 
 https://mathematica.stackexchange.com/questions/192278/is-there-a-defined-priority-for-pattern-matching
@@ -110,7 +112,6 @@ in wl this returns: `{s[x_][y_][z_]->1[z][y[z]],k[x_][y_]->1}`
 ```scheme
 (set x 1)
 
-(set crules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
 
 thread 'main' panicked at 'head must be a symbol, got 1', src/main.rs:437:68
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
@@ -172,4 +173,52 @@ In[36]:= MatchQ[g[a,b,a,c],g[xs__,xs__]]
 
 Out[36]= False
 
+In[8]:= MatchQ[f[a,a],f[x__,x_]]
+
+TemplateBox[{"Pattern", "patv", "\"\:f7c1\:f7c9\:f7c8RowBox[{\"\\:f3b5Name \", StyleBox[TagBox[\"x\", Function[Short[Slot[1], 5]]], ShowStringCharacters -> False], \" used for both fixed and variable length patterns.\\:f3b5\"}]\:f7c0\"", 2, 8, 2, 19654811836800435566, "Local"}, "MessageTemplate"]
+
+Out[8]= True
+
 ```
+
+walkthrough for (f a b c ) (f x__ y_)
+we cross off f giving
+ex = (a b c) 
+pat = (x__ y_)
+
+now we start with __ being as short as possible, meaning 1 
+so x__ -> Sequence[a], then we set y_ -> b,
+so bindings = {x__ -> Sequence[a], y_ -> b}
+now we need a way to say, "is this a valid solution/match?"
+i think the way that this can be accomplished is by evaluating 
+
+SameQ[ex, pat/.bindings]. if not we need to backtrack.
+so lets start completely over (not taking care of optimality or w/e)
+so we make a note that the first bindings were wrong.
+so we go to the next possible binding 
+x-> Sequence[a,b], y_ -> c
+SameQ[ex, pat/.bindings], which ends up being true. 
+
+now working through 
+In[12]:= f[a,b,c]/. f[x__,y___,z_]-> {{x}, {y}, {z}}
+
+Out[12]= {{a},{b},{c}}
+
+again cross off f 
+ex = (a b c)
+pat = (x__ y___ z_)
+now we take x to be len 1, y 0, z 1. summing lengths, we see that 2 != 3, so we backtrack
+the question is why do we not take x to be [a, b] and y to be [c]?
+we have access to the information, which patterns in `pat` can be increased, ie which are __ or ___.
+the solution is go to the last possible seq pattern and increase it.
+so we go back to y___ and increase it to take y -> Sequence[b], and z -> c, finding lengths equal, we are done
+
+(set crules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
+
+In[16]:= f[a,b,c]/. f[x___,y__,z_]-> {{x}, {y}, {z}}
+
+Out[16]= {{},{a,b},{c}}
+
+in this case we start with a ___, give it length zero. 
+give y a, z ->b , lengths dont match, so we backtrack to y, not x 
+y -> {a,b}, z -> c, lengths match, we are done

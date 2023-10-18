@@ -620,7 +620,7 @@ fn splice_sequences(expr: Expr) -> Expr {
                 let item = list[i].clone();
                 if let Expr::List(ref sublist) = item {
                     if let Some(Expr::Sym(head)) = sublist.first() {
-                        if head == "sequence" {
+                        if head == "Sequence" {
                             new_list.extend_from_slice(&sublist[1..]);
                             i += 1;
                             continue;
@@ -716,7 +716,7 @@ fn my_match(
                     let p_name = &pi[1];
                     if bt == &sym("blank_seq") {
                         for j in 1..=es[1..].len() {
-                            let mut elts = vec![sym("sequence")];
+                            let mut elts = vec![sym("Sequence")];
                             // im pretty sure this is not needed
                             if i + j > es.len() {
                                 // println!("breaking news!");
@@ -742,7 +742,7 @@ fn my_match(
                         }
                     } else if bt == &sym("blank_null_seq") {
                         for j in 0..=es[1..].len() {
-                            let mut elts = vec![sym("sequence")];
+                            let mut elts = vec![sym("Sequence")];
                             // im pretty sure this is not needed
                             if i + j > es.len() {
                                 // println!("breaking news!");
@@ -774,7 +774,7 @@ fn my_match(
                     }
                 } else if head(pi) == sym("blank_seq") {
                     for j in 1..=es[1..].len() {
-                        let mut elts = vec![sym("sequence")];
+                        let mut elts = vec![sym("Sequence")];
                         // im pretty sure this is not needed
                         if i + j > es.len() {
                             // println!("breaking news!");
@@ -812,7 +812,7 @@ fn my_match(
                     }
                 } else if head(pi) == sym("blank_null_seq") {
                     for j in 0..=es[1..].len() {
-                        let mut elts = vec![sym("sequence")];
+                        let mut elts = vec![sym("Sequence")];
                         // im pretty sure this is not needed
                         if i + j > es.len() {
                             println!("breaking news!");

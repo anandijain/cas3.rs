@@ -668,12 +668,16 @@ fn is_blank_match(e: Expr, p: Expr) -> bool {
 
 fn my_match(
     ex: Expr,
-    pat: Expr,
+    mut pat: Expr,
     pos: &Vec<usize>,
     pos_map: &mut HashMap<Vec<usize>, Expr>,
     named_map: &mut HashMap<Expr, Expr>,
 ) -> bool {
-    println!("{pos:?} | {ex} | {pat} | {pos_map:?}");
+    let mut pattern_expr = pat.clone();
+    if head(&pattern_expr) == sym("hold_pattern") {
+        pat = pattern_expr[1].clone();
+    }
+    // println!("{pos:?} | {ex} | {pat} | {pos_map:?}");
     let pat_syms = vec![sym("blank"), sym("blank_seq")];
     match (ex.clone(), pat.clone()) {
         (Expr::List(es), Expr::List(ps)) => {
@@ -703,7 +707,7 @@ fn my_match(
                 let mut new_pos = pos.clone();
                 new_pos.push(i); // we are at the head
                 if head(pi) == sym("pattern") {
-                    println!("in pattern pi ");
+                    // println!("in pattern pi ");
                     if let Some(from_map) = named_map.get(&pi) {
                         println!("we should have rebuilt to remove this i think");
                     }
@@ -715,7 +719,7 @@ fn my_match(
                             let mut elts = vec![sym("sequence")];
                             // im pretty sure this is not needed
                             if i + j > es.len() {
-                                println!("breaking news!");
+                                // println!("breaking news!");
                                 break 'outer;
                             }
                             for seq_e in &es[i..i + j] {
@@ -731,7 +735,7 @@ fn my_match(
                             named_map.insert(pi.clone(), seq.clone());
 
                             let new_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-                            println!("new_pat in bs: at iter {j} {new_pat} {seq}");
+                            // println!("new_pat in bs: at iter {j} {new_pat} {seq}");
                             if my_match(ex.clone(), new_pat, pos, pos_map, named_map) {
                                 break 'outer;
                             }
@@ -741,7 +745,7 @@ fn my_match(
                             let mut elts = vec![sym("sequence")];
                             // im pretty sure this is not needed
                             if i + j > es.len() {
-                                println!("breaking news!");
+                                // println!("breaking news!");
                                 break 'outer;
                             }
                             for seq_e in &es[i..i + j] {
@@ -757,7 +761,7 @@ fn my_match(
                             named_map.insert(pi.clone(), seq.clone());
 
                             let new_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-                            println!("new_pat in bs: at iter {j} {new_pat} {seq}");
+                            // println!("new_pat in bs: at iter {j} {new_pat} {seq}");
                             if my_match(ex.clone(), new_pat, pos, pos_map, named_map) {
                                 break 'outer;
                             }
@@ -773,7 +777,7 @@ fn my_match(
                         let mut elts = vec![sym("sequence")];
                         // im pretty sure this is not needed
                         if i + j > es.len() {
-                            println!("breaking news!");
+                            // println!("breaking news!");
                             break 'outer;
                         }
                         for seq_e in &es[i..i + j] {
@@ -789,7 +793,7 @@ fn my_match(
                         pos_map.insert(new_pos.clone(), seq.clone());
 
                         let new_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-                        println!("new_pat in bs: at iter {j} {new_pat}");
+                        // println!("new_pat in bs: at iter {j} {new_pat}");
                         let mut copy = pos_map.clone();
                         // this is to avoid double application of a pos rule
                         copy.remove(&new_pos);
@@ -827,7 +831,7 @@ fn my_match(
                         pos_map.insert(new_pos.clone(), seq.clone());
 
                         let new_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-                        println!("new_pat in bs: at iter {j} {new_pat}");
+                        // println!("new_pat in bs: at iter {j} {new_pat}");
                         let mut copy = pos_map.clone();
                         // this is to avoid double application of a pos rule
                         copy.remove(&new_pos);
@@ -854,7 +858,7 @@ fn my_match(
                 }
             }
             let final_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-            println!("final comparison: POS: {pos:?} | PAT: {pat} | NEW_PAT: {final_pat} | EX: {ex} || pos {pos_map:?} || named {named_map:?}");
+            // println!("final comparison: POS: {pos:?} | PAT: {pat} | NEW_PAT: {final_pat} | EX: {ex} || pos {pos_map:?} || named {named_map:?}");
             if final_pat == ex {
                 return true;
             }
@@ -1018,7 +1022,6 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
         let mut pos_map = HashMap::new();
         let mut named_map = HashMap::new();
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
-        // if is_match(expr, &rule[1], &mut bindings) {
         if my_match(
             expr.clone(),
             rule[1].clone(),
@@ -1042,7 +1045,13 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
         let mut pos_map = HashMap::new();
         let mut named_map = HashMap::new();
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
-        if my_match(expr.clone(), rule[1].clone(), &pos, &mut pos_map, &mut named_map) {
+        if my_match(
+            expr.clone(),
+            rule[1].clone(),
+            &pos,
+            &mut pos_map,
+            &mut named_map,
+        ) {
             return replace(expr, &rule);
         }
     }

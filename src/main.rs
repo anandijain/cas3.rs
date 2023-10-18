@@ -454,15 +454,23 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     if let Expr::List(_ls) = dvs {
                         // dv expected to be (rule_delayed (hold_pattern lhs) rhs)
                         for dv in &_ls[1..] {
-                            let mut bindings = HashMap::new();
-                            if is_match(&attr_expr, &dv[1], &mut bindings) {
+                            let mut pos_map = HashMap::new();
+                            let mut named_map = HashMap::new();
+                            let pos = vec![];
+                            if my_match(
+                                attr_expr.clone(),
+                                dv[1].clone(),
+                                &pos,
+                                &mut pos_map,
+                                &mut named_map,
+                            ) {
                                 // println!("found attributes match for {} -> {}", nh, dv);
                                 nh_attrs = replace(&attr_expr, dv);
                                 break; // Exit the loop once a match is found
                             }
                         }
                     } else {
-                        panic!("downvalues must be a list");
+                        panic!("down_values must be a list");
                     }
                 }
 
@@ -1006,12 +1014,20 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
     let rules_list = norm_rules(rules);
 
     for rule in rules_list {
-        let mut bindings = HashMap::new();
-        // println!("rule: {}", rule);
+        let pos = vec![];
+        let mut pos_map = HashMap::new();
+        let mut named_map = HashMap::new();
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
-        if is_match(expr, &rule[1], &mut bindings) {
+        // if is_match(expr, &rule[1], &mut bindings) {
+        if my_match(
+            expr.clone(),
+            rule[1].clone(),
+            &pos,
+            &mut pos_map,
+            &mut named_map,
+        ) {
             let mut new_expr = rule[2].clone();
-            new_expr = replace_all(&new_expr, &bindings_to_rules(&bindings));
+            new_expr = replace_all(&new_expr, &pat_bindings_to_rules(&named_map));
 
             return new_expr;
         }
@@ -1022,9 +1038,11 @@ pub fn replace(expr: &Expr, rules: &Expr) -> Expr {
 pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     let rules_list = norm_rules(rules);
     for rule in rules_list {
-        let mut bindings = HashMap::new();
+        let pos = vec![];
+        let mut pos_map = HashMap::new();
+        let mut named_map = HashMap::new();
         assert!(head(&rule) == sym("rule") || head(&rule) == sym("rule_delayed"));
-        if is_match(expr, &rule[1], &mut bindings) {
+        if my_match(expr.clone(), rule[1].clone(), &pos, &mut pos_map, &mut named_map) {
             return replace(expr, &rule);
         }
     }

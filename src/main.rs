@@ -290,6 +290,50 @@ pub fn internal_functions_apply(
                 return sym("$Failed");
             }
         }
+    } else if nh == sym("setd") {
+        // println!("evaluated_args: {:?}", evaluated_args);
+        let lhs = &evaluated_args[0];
+        match lhs {
+            Expr::Sym(ref s) => {
+                // pretty sure this needs to be fixed to check if te already exists
+                let mut te = TableEntry::new();
+                te.own = Some(evaluated_args[1].clone());
+                ctx.vars.insert(sym(s), te);
+                return sym("Null");
+            }
+            // this is the down/subvalue case
+            Expr::List(ls) => {
+                let lhs_h = &ls[0];
+                match lhs_h {
+                    // lhs_h is the tag in this downvalue assignment
+                    Expr::Sym(_) => {
+                        let rhs = &evaluated_args[1];
+                        // onto the downvalues of h (which is expected to have head list)
+                        let te: &mut TableEntry = ctx
+                            .vars
+                            .entry(lhs_h.clone())
+                            .or_insert_with(TableEntry::new);
+                        let dv_str = format!("(rule_delayed (hold_pattern {lhs}) {rhs})");
+                        let dv = expr_parser::Expr(&dv_str).unwrap();
+
+                        // NOTE! here we aren't inserting in the right order, where we look for more specific
+                        // definitions and insert them first. so user has to do the right order themselves
+                        // at the moment
+                        te.down.push(dv);
+                        return sym("Null");
+                    }
+                    // subvalue
+                    Expr::List(_) => {
+                        todo!("subvalues")
+                    }
+                    _ => panic!("hi"),
+                }
+            }
+            _ => {
+                println!("set takes a symbol or list, got {}", lhs);
+                return sym("$Failed");
+            }
+        }
     } else if nh == sym("own_values") {
         ctx.vars
             .get(&evaluated_args[0])
@@ -1142,6 +1186,9 @@ pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
     for line in reader.lines() {
         match line {
             Ok(content) => {
+                if content.starts_with("//") {
+                    continue;
+                }
                 if let Ok(ex) = &expr_parser::Expr(&content) {
                     let mut stack = Expr::List(vec![]);
                     evaluate(&mut stack, ctx, ex);

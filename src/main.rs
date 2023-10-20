@@ -461,7 +461,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             // If the expression hasn't changed, break the loop.
             break;
         }
-        println!("evaluating: {}", ex);
+        // println!("evaluating: {}", ex);
 
         last_ex = Some(ex.clone());
 
@@ -591,7 +591,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         .chain(evaluated_args.clone().to_owned())
                         .collect(),
                 );
-                println!("reconstructed_ex: {}", reconstructed_ex);
+                // println!("reconstructed_ex: {}", reconstructed_ex);
 
                 // step 14: apply user defined downvalues and subvalues
                 let exprime = match nh.clone() {
@@ -603,13 +603,13 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     Expr::Sym(_) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
                         let dvs = &te.down;
-                        println!("looking for user defined down_values for {} -> {}", nh, dvs);
+                        // println!("looking for user defined down_values for {} -> {}", nh, dvs);
 
                         // should this be replace_all? or replace_repeated?
 
                         let exprime = replace_all(&reconstructed_ex, dvs);
-                        println!("before: {}", reconstructed_ex);
-                        println!("after: {}", exprime);
+                        // println!("before: {}", reconstructed_ex);
+                        // println!("after: {}", exprime);
                         exprime
                     }
                     // subvalue
@@ -638,9 +638,10 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             }
         }
     }
-    println!("exiting evaluate: {}", ex);
+    // println!("exiting evaluate: {}", ex);
     ex
 }
+
 fn named_rebuild_all(expr: Expr, map: &HashMap<Expr, Expr>) -> Expr {
     // First, check if the entire expression exists in the map and replace it if it does
     if let Some(replacement) = map.get(&expr) {
@@ -1235,8 +1236,8 @@ fn main() -> Result<()> {
         vars: HashMap::new(),
     };
 
-    run_file(&mut ctx, Path::new("attrs.sexp"))?;
-    run_file(&mut ctx, Path::new("startup.sexp"))?;
+    run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
+    run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
     startup_attrs(&mut ctx);
     run(rl, ctx)?;
     Ok(())
@@ -1427,7 +1428,7 @@ mod tests {
     }
 
     #[test]
-    fn evaluation() {
+    fn seqs_and_geeks() {
         assert_eq!(
             evalparse("(sameq (f (Sequence a b) c (Sequence d e)) (f a b c d e))"),
             sym("true")
@@ -1436,7 +1437,7 @@ mod tests {
         let mut ctx = Context2 {
             vars: HashMap::new(),
         };
-        run_file(&mut ctx, Path::new("attrs.sexp")).unwrap();
+        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
         ctx_evalparse(
             &mut ctx,
             "(setd (listq (pattern x (blank))) (sameq list (head x)))",

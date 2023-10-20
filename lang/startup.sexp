@@ -67,7 +67,6 @@
 
 (setd (listq (pattern x (blank))) (sameq list (head x)))
 
-(set (rule_30 (pattern p (blank)) (pattern r (blank)) (pattern q (blank))) (Xor p (Or r q)))
 
 (setd (Table (pattern val (blank)) 0) (list))
 (setd (Table (pattern val (blank)) (pattern n (blank Int))) (list val (to_seq (Table val (Plus n -1)))))

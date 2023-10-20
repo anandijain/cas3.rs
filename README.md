@@ -1,5 +1,28 @@
 # cas3.rs
 
+To run cas3.rs, make sure rust is installed, and run `cargo run --release` in the root directory.
+
+## Language Highlights - todo make sure these are all tested
+```scheme
+; Counting with Combinators
+; First we define the sk rules
+(set sk_rules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
+
+; now we define the rule for incrementing
+(set succ (s ((s (k s)) k)))
+
+; now we apply succ to (s k) 10 times
+(Nest succ (s k) 10)
+
+; now we apply [s][k] to the result and do fixed-point replacement using our SK-rules
+(rr (((Nest succ (s k) 10) s) k) sk_rules)
+; you should see:
+; (s (s (s (s (s (s (s (s (s (s k))))))))))
+
+```
+
+
+
 https://reference.wolfram.com/language/tutorial/EvaluationOfExpressions.html
 https://reference.wolfram.com/language/tutorial/TheInternalsOfTheWolframSystem.html
 https://reference.wolfram.com/language/tutorial/SomeNotesOnInternalImplementation.html

@@ -65,8 +65,9 @@
 // note this definition is different than wolfram which gives some "Identity[a,b,c]" and a warning
 (set (to_seq (list (pattern xs (blank_null_seq)))) xs)
 
-(setd (Map (pattern f (blank)) (list)) (list))
-(setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs))))))
+;; broken, implemented kernel side for now
+;; (setd (Map (pattern f (blank)) (list)) (list))
+;; (setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs))))))
 
 (setd (listq (pattern x (blank))) (sameq list (head x)))
 

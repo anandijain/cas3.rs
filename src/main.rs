@@ -366,8 +366,7 @@ pub fn internal_functions_apply(
         ctx.vars.get(&evaluated_args[0]).unwrap().down.clone()
     } else if nh == sym("sub_values") {
         todo!()
-    }
-    else if nh == sym("clear") {
+    } else if nh == sym("clear") {
         match &evaluated_args[0] {
             Expr::Sym(_) => {
                 if let Some(te) = ctx.vars.get_mut(&evaluated_args[0]) {
@@ -454,6 +453,33 @@ pub fn internal_functions_apply(
         } else {
             println!("Get takes an Expr::String");
             return sym("$Failed");
+        }
+    } else if nh == sym("Map") {
+        // todo level spec
+        // honestly i was hoping i could do this in cas3, not builtin but just to get things going
+        let mut res = list(vec!["list"]);
+        let f = &evaluated_args[0];
+        let mapargs = &evaluated_args[1];
+
+        for (i, arg) in mapargs[1..].iter().enumerate() {
+            let fi = Expr::List(vec![f.clone(), arg.clone()]);
+            res.push(fi);
+        }
+        return res;
+    } else if nh == sym("NestList") {
+        let f = &evaluated_args[0];
+        let x = &evaluated_args[1];
+        let n = &evaluated_args[2];
+        let mut res = list(vec!["list"]);
+        res.push(x.clone());
+        if let Expr::Int(count ) = n {
+            for _i in 0..count.to_i64().unwrap() {
+                let fi = Expr::List(vec![f.clone(), res.last().unwrap().clone()]);
+                res.push(fi);
+            }
+            return res;
+        } else {
+            return reconstructed_ex;
         }
     }else {
         return Expr::List(
@@ -1161,7 +1187,7 @@ pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<Expr> {
     for line in reader.lines() {
         match line {
             Ok(content) => {
-                if content.starts_with("//") {
+                if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
                     continue;
                 }
                 if let Ok(ex) = &expr_parser::Expr(&content) {

@@ -1,5 +1,4 @@
-
-
+// bool
 (set (And true true) true)
 (set (And true false) false)
 (set (And false true) false)
@@ -24,6 +23,9 @@
 (set (Not false) true)
 
 (set (Not (Not (pattern x (blank)))) x)
+
+(setd (Boole 0) false)
+(setd (Boole 1) true)
 
 // Identity laws for addition
 // Adding 0 to any number results in the number itself
@@ -63,12 +65,13 @@
 (setd (Map (pattern f (blank)) (list)) (list))
 (setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs))))))
 
-// this one works 
-// (setd (listq (pattern x (blank list))) true)
-// (setd (listq (pattern x (blank))) (sameq list (head x)))
+(setd (listq (pattern x (blank))) (sameq list (head x)))
 
 (set (rule_30 (pattern p (blank)) (pattern r (blank)) (pattern q (blank))) (Xor p (Or r q)))
 
 (setd (Table (pattern val (blank)) 0) (list))
 (setd (Table (pattern val (blank)) (pattern n (blank Int))) (list val (to_seq (Table val (Plus n -1)))))
 
+
+
+//(setd (Partition (pattern list (blank list)) (pattern n (blank Int)) (pattern d (blank Int))))

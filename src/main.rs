@@ -124,6 +124,13 @@ fn head(expr: &Expr) -> Expr {
     }
 }
 
+fn length(expr: &Expr) -> Expr {
+    match expr {
+        Expr::List(es) => Expr::Int((es.len() - 1).into()),
+        _ => Expr::Int(0.into()),
+    }
+}
+
 // (a b c) -> (b c)
 // fn rest(expr: &Expr) -> Expr {}
 
@@ -235,9 +242,20 @@ pub fn internal_functions_apply(
             }
         }
     } else if nh == sym("set") {
+        // array part setting notes:
+        // (set l (Table false 9))
+        // simple single assignment case
+        // (set (Part l 1) 3)
+
+        // this is the more advanced case setting multiple at the same time
+        // (set (Part l (list 1 2 3)) (Table true 3))
+
         // println!("evaluated_args: {:?}", evaluated_args);
         let lhs = &evaluated_args[0];
+        let rhs = &evaluated_args[1];
+
         match lhs {
+            // ownvalue
             Expr::Sym(ref s) => {
                 // pretty sure this needs to be fixed to check if te already exists
                 let mut te = TableEntry::new();
@@ -251,12 +269,17 @@ pub fn internal_functions_apply(
                 match lhs_h {
                     // lhs_h is the tag in this downvalue assignment
                     Expr::Sym(_) => {
+                        // todo: implementing list inplace modification
+                        // if lhs_h == &sym("Part") {
+                        //     let part_lhs = &ls[1];
+                        //     let part_rhs = &ls[2];
+                        //     assert_eq!(length(rhs), length(part_rhs));
+                        // }
                         //given
                         // (set (f (pattern x (blank))) x)
                         // we end up pushing
                         // (rule_delayed (holdpattern expr[1]) expr[2])
                         // (rule_delayed (holdpattern evaluated_args[0]) evaluated_args[1])
-                        let rhs = &evaluated_args[1];
                         // onto the downvalues of h (which is expected to have head list)
                         let te: &mut TableEntry = ctx
                             .vars
@@ -275,7 +298,11 @@ pub fn internal_functions_apply(
                     Expr::List(_) => {
                         todo!("subvalues")
                     }
-                    _ => panic!("hi"),
+                    _ => {
+                        let h = head(lhs_h);
+                        println!("Tag {h} in {lhs} is Protected");
+                        return rhs.clone();
+                    }
                 }
             }
             _ => {
@@ -340,7 +367,6 @@ pub fn internal_functions_apply(
     } else if nh == sym("sub_values") {
         todo!()
     }
-    // need to hold our args first otherwise (set x 1) (clear x) ends up being (clear 1) which makes no sense
     else if nh == sym("clear") {
         match &evaluated_args[0] {
             Expr::Sym(_) => {
@@ -415,6 +441,8 @@ pub fn internal_functions_apply(
             },
             _ => return reconstructed_ex,
         }
+    } else if nh == sym("Length") {
+        return length(&evaluated_args[0]);
     } else {
         return Expr::List(
             std::iter::once(nh.clone())
@@ -433,7 +461,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             // If the expression hasn't changed, break the loop.
             break;
         }
-        // println!("evaluating: {}", ex);
+        println!("evaluating: {}", ex);
 
         last_ex = Some(ex.clone());
 
@@ -536,6 +564,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     hold_mask[1..].fill(true);
                 }
                 // println!("hold_mask: {:?}", hold_mask);
+
                 for (i, p) in ls[1..].iter().enumerate() {
                     if hold_mask[i] {
                         evaluated_args.push(p.clone());
@@ -562,8 +591,9 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         .chain(evaluated_args.clone().to_owned())
                         .collect(),
                 );
+                println!("reconstructed_ex: {}", reconstructed_ex);
 
-                // step 14
+                // step 14: apply user defined downvalues and subvalues
                 let exprime = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
                     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
@@ -578,12 +608,12 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                         // should this be replace_all? or replace_repeated?
 
                         let exprime = replace_all(&reconstructed_ex, dvs);
-                        if exprime != ex {}
                         println!("before: {}", reconstructed_ex);
                         println!("after: {}", exprime);
                         exprime
                     }
-                    Expr::List(_) => ex.clone(),
+                    // subvalue
+                    Expr::List(_) => reconstructed_ex.clone(),
                 };
 
                 // im not sure if this is correct, but it seems necesary,
@@ -608,7 +638,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             }
         }
     }
-
+    println!("exiting evaluate: {}", ex);
     ex
 }
 fn named_rebuild_all(expr: Expr, map: &HashMap<Expr, Expr>) -> Expr {
@@ -1407,12 +1437,12 @@ mod tests {
             vars: HashMap::new(),
         };
         run_file(&mut ctx, Path::new("attrs.sexp")).unwrap();
-        ctx_evalparse(&mut ctx, "(setd (listq (pattern x (blank))) (sameq list (head x)))");
-        println!("listq ctx {:?}", ctx);
-        assert_eq!(
-            ctx_evalparse(&mut ctx, "(listq (list a b c))"),
-            sym("true")
+        ctx_evalparse(
+            &mut ctx,
+            "(setd (listq (pattern x (blank))) (sameq list (head x)))",
         );
+        println!("listq ctx {:?}", ctx);
+        assert_eq!(ctx_evalparse(&mut ctx, "(listq (list a b c))"), sym("true"));
     }
 
     #[test]

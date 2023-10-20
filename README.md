@@ -41,6 +41,12 @@ To run cas3.rs, make sure rust is installed, and run `cargo run --release` in th
 ; big ints, look, no overflow 
 (Fac 1000)
 
+; Symbolic Differentiation 
+; (see definition of `D` in ./lang/calculus.sexp)
+; note Flat and Orderless are attributes are not implemented so the derivative, while correct, is not in its simplest form
+(D (Plus (Power x 2) (Times 3 x) 2) x)
+(D (Times (Sin x) (Cos x)) x)
+(D (Exp (Power x 2)) x)
 ```
 
 

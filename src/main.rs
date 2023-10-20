@@ -7,6 +7,7 @@ use std::{
 use ordered_float;
 use rug::Integer;
 use rustyline::{
+    config::Configurer,
     error::ReadlineError,
     highlight::{Highlighter, MatchingBracketHighlighter},
     validate::MatchingBracketValidator,
@@ -41,7 +42,7 @@ peg::parser! {
             = "(" l:Expr() ** whitespace() ")" { Expr::List(l) }
 
         pub rule Expr() -> Expr
-            = atom() / list()
+            = whitespace() e:(atom() / list()) whitespace() { e }
     }
 }
 
@@ -51,6 +52,7 @@ fn parse(s: &str) -> Expr {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expr {
+    // Int(num_bigint::BigInt),
     Int(Integer),
     Real(ordered_float::NotNan<f64>),
     Sym(String),
@@ -198,17 +200,8 @@ pub fn internal_functions_apply(
                 &mut HashMap::new()
             )
         ));
-    } else if nh == sym("matchq") {
-        // assert!(evaluated_args.len() == 2);
-        if evaluated_args.len() != 2 {
-            println!("matchq takes 2 arguments");
-            return sym("$Failed");
-        }
-        return Expr::Sym(format!(
-            "{}",
-            is_match(&evaluated_args[0], &evaluated_args[1], &mut HashMap::new())
-        ));
     } else if nh == sym("sameq") {
+        println!("in sameq: evaluated_args: {:?}", evaluated_args);
         let first_arg = &evaluated_args[0];
         let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
         return Expr::Sym(format!("{}", all_same));
@@ -440,6 +433,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
             // If the expression hasn't changed, break the loop.
             break;
         }
+        // println!("evaluating: {}", ex);
 
         last_ex = Some(ex.clone());
 
@@ -570,7 +564,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 );
 
                 // step 14
-                ex = match nh.clone() {
+                let exprime = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
                     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
                         panic!("head must be a symbol, got {nh}")
@@ -579,17 +573,26 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                     Expr::Sym(_) => {
                         let te = ctx.vars.entry(nh.clone()).or_insert_with(TableEntry::new);
                         let dvs = &te.down;
-                        // println!("looking for user defined down_values for {} -> {}", s, dvs);
+                        println!("looking for user defined down_values for {} -> {}", nh, dvs);
 
                         // should this be replace_all? or replace_repeated?
 
                         let exprime = replace_all(&reconstructed_ex, dvs);
-                        // println!("before: {}", reconstructed_ex);
-                        // println!("after: {}", exprime);
+                        if exprime != ex {}
+                        println!("before: {}", reconstructed_ex);
+                        println!("after: {}", exprime);
                         exprime
                     }
-                    Expr::List(_) => ex,
+                    Expr::List(_) => ex.clone(),
                 };
+
+                // im not sure if this is correct, but it seems necesary,
+                // if we found a matching downvalue rule, then we need to re-evaluate the expression after replacement
+                if ex != exprime {
+                    ex = exprime;
+                    continue;
+                }
+
                 // note now that ex is not necesarily a List anymore
                 // so if we still have a list, then we do step 15, and apply internal down/subvalues
 
@@ -628,7 +631,13 @@ fn named_rebuild_all(expr: Expr, map: &HashMap<Expr, Expr>) -> Expr {
     }
 }
 
-// let pat_syms = vec![sym("blank"), sym("blank_seq")];
+// fn fix_pos_map(offset:isize, pos: &Vec<usize>, pos_map: &HashMap<Vec<usize>, Expr>)->HashMap<Vec<usize>, Expr> {
+
+// }
+
+// )
+/// to fix pos_map. as you iterate es, and you keep track of the offset for the current list.
+/// then you want to adjust lookups into the posmap based on the position - offset.
 fn pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Expr>) -> Expr {
     if let Some(replacement) = pos_map.get(&pos) {
         return replacement.clone();
@@ -637,10 +646,16 @@ fn pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Exp
     match pat {
         Expr::List(es) => {
             let mut new_es = vec![];
+            // note in the case of blank_null_seq, this can be negative
+            let mut offset: isize = 0;
             for (i, e) in es.iter().enumerate() {
                 let mut new_pos = pos.clone();
                 new_pos.push(i);
                 let new_e = pos_map_rebuild(new_pos, e.clone(), pos_map);
+                if head(&new_e) == sym("Sequence") {
+                    offset += new_e.len() as isize - 2; // its -2 becasue 1 for the head and 1 for the original (blank_seq) object
+                }
+                // println!("{i}, new_e: {} offest: {offset}", new_e);
                 new_es.push(new_e);
             }
             Expr::List(new_es)
@@ -717,11 +732,11 @@ fn my_match(
     pos_map: &mut HashMap<Vec<usize>, Expr>,
     named_map: &mut HashMap<Expr, Expr>,
 ) -> bool {
-    let mut pattern_expr = pat.clone();
+    let pattern_expr = pat.clone();
     if head(&pattern_expr) == sym("hold_pattern") {
         pat = pattern_expr[1].clone();
     }
-    // println!("{pos:?} | {ex} | {pat} | {pos_map:?}");
+    // println!("entering my_match: {pos:?} | {ex} | {pat} | {pos_map:?} | {named_map:?}");
     let pat_syms = vec![sym("blank"), sym("blank_seq")];
     match (ex.clone(), pat.clone()) {
         (Expr::List(es), Expr::List(ps)) => {
@@ -753,6 +768,8 @@ fn my_match(
                 if head(pi) == sym("pattern") {
                     // println!("in pattern pi ");
                     if let Some(from_map) = named_map.get(&pi) {
+                        // here is an example that contradicts the below i think
+                        //  (setd (Times (pattern x (blank Sym)) (pattern x (blank Sym))) (Pow x 2))
                         println!("we should have rebuilt to remove this i think");
                     }
                     let b = &pi[2];
@@ -811,6 +828,9 @@ fn my_match(
                             }
                         }
                     } else {
+                        if i >= es.len() {
+                            break 'outer;
+                        }
                         // named blank case
                         if !my_match(es[i].clone(), ps[i].clone(), &new_pos, pos_map, named_map) {
                             break 'outer;
@@ -932,97 +952,6 @@ fn my_match(
             }
         }
         _ => ex == pat,
-    }
-}
-
-// this whole thing needs to be rewritten
-// just a total mess
-fn is_match(expr: &Expr, pattern_ex: &Expr, bindings: &mut HashMap<String, Expr>) -> bool {
-    // this is questionable
-    let mut pattern_expr = pattern_ex.clone();
-    if head(&pattern_expr) == sym("hold_pattern") {
-        pattern_expr = pattern_expr[1].clone();
-    }
-
-    match (expr, pattern_expr) {
-        (Expr::List(e_list), Expr::List(p_list)) => {
-            // println!("e_list: {:?}", e_list);
-            if p_list.len() == 1 {
-                if let Expr::Sym(ref head) = p_list[0] {
-                    if head == "blank" {
-                        return true;
-                    }
-                }
-            }
-
-            if p_list.len() > 0 {
-                if let Expr::Sym(ref p_head) = p_list[0] {
-                    if p_head == "pattern" {
-                        let name = p_list[1].clone().to_string();
-                        let pattern = &p_list[2];
-                        if let Some(existing_binding) = bindings.get(&name) {
-                            return expr == existing_binding;
-                        }
-                        if is_match(expr, pattern, bindings) {
-                            bindings.insert(name, expr.clone());
-                            return true;
-                        }
-                    } else if p_head == "blank" {
-                        if p_list.len() == 2 {
-                            // println!("p_list: {:?}", p_list);
-                            let required_head = &p_list[1];
-                            if head(expr) == *required_head {
-                                return true;
-                            }
-                        } else if p_list.len() == 1 {
-                            // not sure if this branch is needed. this whole function needs to be rewritten
-                            return true;
-                        }
-                    }
-                    //  else if p_head == "blank_null_seq" {
-                    //     return true;
-                    // }
-                }
-            }
-
-            if p_list.len() == 0 || e_list.len() != p_list.len() {
-                // println!("length case ");
-                return false;
-            }
-
-            for (e, p) in e_list.iter().zip(p_list.iter()) {
-                if !is_match(e, p, bindings) {
-                    return false;
-                }
-            }
-            true
-        }
-        (_, Expr::List(p_list)) => {
-            if let Expr::Sym(ref p_head) = p_list[0] {
-                if p_head == "pattern" {
-                    let name = p_list[1].clone().to_string();
-                    let pattern = &p_list[2];
-                    if let Some(existing_binding) = bindings.get(&name) {
-                        return expr == existing_binding;
-                    }
-                    if is_match(expr, pattern, bindings) {
-                        bindings.insert(name, expr.clone());
-                        return true;
-                    }
-                } else if p_head == "blank" {
-                    if p_list.len() == 2 {
-                        let required_head = &p_list[1];
-                        if head(expr) == *required_head {
-                            return true;
-                        }
-                    } else if p_list.len() == 1 {
-                        return true;
-                    }
-                }
-            }
-            false
-        }
-        (l, r) => l == &r,
     }
 }
 
@@ -1179,7 +1108,7 @@ impl Highlighter for ReplHelper {
     }
 }
 
-pub fn startup(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
+pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
     let file = File::open(startup_path)?;
     let reader = BufReader::new(file);
 
@@ -1231,8 +1160,8 @@ pub fn run(
                         // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
                         //     .unwrap();
                         // evaluate(&mut stack, &mut ctx, &in_i);
-                        let out_i = expr_parser::Expr(format!("(set (Out {i}) {})", expr).as_str())
-                            .unwrap();
+                        let out_i =
+                            expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str()).unwrap();
                         evaluate(&mut stack, &mut ctx, &out_i);
 
                         println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
@@ -1267,6 +1196,7 @@ fn main() -> Result<()> {
     };
     let config = rustyline::Config::default();
     let mut rl = Editor::with_config(config)?;
+    rl.set_max_history_size(10000).unwrap();
     rl.set_helper(Some(h));
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
@@ -1275,7 +1205,8 @@ fn main() -> Result<()> {
         vars: HashMap::new(),
     };
 
-    startup(&mut ctx, Path::new("startup.sexp"))?;
+    run_file(&mut ctx, Path::new("attrs.sexp"))?;
+    run_file(&mut ctx, Path::new("startup.sexp"))?;
     startup_attrs(&mut ctx);
     run(rl, ctx)?;
     Ok(())
@@ -1290,6 +1221,17 @@ pub fn evalparse(s: &str) -> Expr {
             };
             let mut stack = Expr::List(vec![]);
             evaluate(&mut stack, &mut ctx, &expr)
+        }
+        Err(err) => panic!("Failed to parse: {}", err),
+    }
+}
+
+pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
+    let ex = expr_parser::Expr(s);
+    match ex {
+        Ok(expr) => {
+            let mut stack = Expr::List(vec![]);
+            evaluate(&mut stack, ctx, &expr)
         }
         Err(err) => panic!("Failed to parse: {}", err),
     }
@@ -1458,6 +1400,17 @@ mod tests {
     fn evaluation() {
         assert_eq!(
             evalparse("(sameq (f (Sequence a b) c (Sequence d e)) (f a b c d e))"),
+            sym("true")
+        );
+
+        let mut ctx = Context2 {
+            vars: HashMap::new(),
+        };
+        run_file(&mut ctx, Path::new("attrs.sexp")).unwrap();
+        ctx_evalparse(&mut ctx, "(setd (listq (pattern x (blank))) (sameq list (head x)))");
+        println!("listq ctx {:?}", ctx);
+        assert_eq!(
+            ctx_evalparse(&mut ctx, "(listq (list a b c))"),
             sym("true")
         );
     }

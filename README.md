@@ -1,7 +1,6 @@
 # cas3.rs
 
 https://reference.wolfram.com/language/tutorial/EvaluationOfExpressions.html
-
 https://reference.wolfram.com/language/tutorial/TheInternalsOfTheWolframSystem.html
 https://reference.wolfram.com/language/tutorial/SomeNotesOnInternalImplementation.html
 
@@ -222,3 +221,7 @@ Out[16]= {{},{a,b},{c}}
 in this case we start with a ___, give it length zero. 
 give y a, z ->b , lengths dont match, so we backtrack to y, not x 
 y -> {a,b}, z -> c, lengths match, we are done
+
+((g x) ((g x) ((g x) y)))
+
+((g x) ((g x) ((g x) y)))

@@ -443,7 +443,19 @@ pub fn internal_functions_apply(
         }
     } else if nh == sym("Length") {
         return length(&evaluated_args[0]);
-    } else {
+    } else if nh == sym("Get") {
+        if let Expr::Str(p) = &evaluated_args[0] {
+            let res = run_file(ctx, Path::new(&p));
+            if let Ok(res) = res {
+                return res;
+            } else {
+                return sym("$Failed");
+            }
+        } else {
+            println!("Get takes an Expr::String");
+            return sym("$Failed");
+        }
+    }else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -1139,10 +1151,13 @@ impl Highlighter for ReplHelper {
     }
 }
 
-pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
+pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<Expr> {
     let file = File::open(startup_path)?;
     let reader = BufReader::new(file);
 
+    // i dont love this because it's ambigious whether or not something failed in reading the file or sth
+    // or if the last expr in the file was a setd or something that returns a Null
+    let mut res = sym("Null");
     for line in reader.lines() {
         match line {
             Ok(content) => {
@@ -1151,7 +1166,9 @@ pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
                 }
                 if let Ok(ex) = &expr_parser::Expr(&content) {
                     let mut stack = Expr::List(vec![]);
-                    evaluate(&mut stack, ctx, ex);
+                    res = evaluate(&mut stack, ctx, ex);
+                } else {
+                    eprintln!("Error parsing a line: {:?}", content);
                 }
             }
             Err(error) => {
@@ -1160,7 +1177,7 @@ pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<()> {
         }
     }
 
-    Ok(())
+    Ok(res)
 }
 
 pub fn run(
@@ -1238,6 +1255,7 @@ fn main() -> Result<()> {
 
     run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
     run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
+    run_file(&mut ctx, Path::new("lang/calculus.sexp"))?;
     startup_attrs(&mut ctx);
     run(rl, ctx)?;
     Ok(())

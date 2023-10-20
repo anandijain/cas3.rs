@@ -39,14 +39,17 @@
 
 // Absorbing laws for multiplication
 // Multiplying any number by 0 results in 0
-(setd (Times (pattern x (blank)) 0) 0)
-(setd (Times 0 (pattern x (blank))) 0)
+;; (setd (Times (pattern x (blank)) 0) 0)
+;; (setd (Times 0 (pattern x (blank))) 0)
+(setd (Times (pattern xs (blank_null_seq)) 0 (pattern ys (blank_null_seq))) 0)
+(setd (Times (pattern xs (blank_null_seq)) 1 (pattern ys (blank_null_seq))) (Times xs ys))
+
 
 // Identity laws for exponentiation
 // Raising any number to the power of 1 results in the number itself
 // Raising any number to the power of 0 results in 1
-(setd (Pow (pattern x (blank)) 1) x)
-(setd (Pow (pattern x (blank)) 0) 1)
+(setd (Power (pattern x (blank)) 1) x)
+(setd (Power (pattern x (blank)) 0) 1)
 
 (setd (Nest (pattern f (blank)) (pattern x (blank)) 0) x)
 (setd (Nest (pattern f (blank)) (pattern x (blank)) (pattern n (blank Int))) (f (Nest f x (Plus n -1))))

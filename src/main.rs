@@ -1270,12 +1270,6 @@ pub fn run(
 }
 
 fn main() -> Result<()> {
-    // println!("{}", sym("hi").len());
-    let s = std::fs::read_to_string("./lang/test_comments.sexp").unwrap();
-    let exs = expr_parser::expressions(&s);
-    println!("{:?}", exs);
-    
-    // return Ok(());
     let h = ReplHelper {
         highlighter: MatchingBracketHighlighter::new(),
         colored_prompt: "".to_owned(),

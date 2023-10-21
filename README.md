@@ -4,47 +4,47 @@
 To run cas3.rs, make sure rust is installed, and run `cargo run --release` in the root directory.
 
 ## language highlights - todo make sure these are all tested
-```clojure
-; Computing with Combinators
-; First we define the sk rules
+```wl
+(* Computing with Combinators *)
+(* First we define the sk rules *)
 (set sk_rules (list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x)))
 
-; now we define the rule for incrementing
+(* now we define the rule for incrementing *)
 (set succ (s ((s (k s)) k)))
 
-; now we apply succ to (s k) 10 times
+(* now we apply succ to (s k) 10 times *)
 (Nest succ (s k) 10)
 
-; now we apply [s][k] to the result and do fixed-point replacement using our SK-rules
+(* now we apply [s][k] to the result and do fixed-point replacement using our SK-rules *)
 (rr (((Nest succ (s k) 10) s) k) sk_rules)
-; you should see:
-; (s (s (s (s (s (s (s (s (s (s k))))))))))
+(* you should see: *)
+(* (s (s (s (s (s (s (s (s (s (s k)))))))))) *)
 
-; now we define a helper function to get an sk representation of a Natural number
+(* now we define a helper function to get an sk representation of a Natural number *)
 (setd (skn (pattern n (blank Int))) (Nest succ (s k) n))
 
-; it turns out the following is the sk representation of plus
-; in the future i would like to do a search to find this 
+(* it turns out the following is the sk representation of plus *)
+(* in the future i would like to do a search to find this  *)
 (set sk_plus ((s (k s)) (s (k ((s (k s)) k)))))
 
-; so now we can compute 60 + 9 using sk_plus
+(* so now we can compute 60 + 9 using sk_plus *)
 (rr ((((sk_plus (skn 60)) (skn 9)) s) k) sk_rules)
 
-; multiplication 
+(* multiplication  *)
 (set sk_times ((s (k s)) k))
 (rr ((((sk_times (skn 7)) (skn 7)) s) k) sk_rules)
 
-; pow 
+(* pow  *)
 (set sk_pow ((s (k (s ((s k) k)))) k))
 (rr ((((sk_pow (skn 2)) (skn 4)) s) k) sk_rules)
 
-; big ints, look, no overflow 
+(* big ints, look, no overflow  *)
 (Fac 1000)
 
-; Symbolic Differentiation 
-; (see definition of `D` in ./lang/calculus.sexp)
-; note Flat and Orderless are attributes are not implemented so the derivative, while correct, is not in its simplest form
-(D (Plus (Power x 2) (Times 3 x) 2) x)
+(* Symbolic Differentiation  *)
+(* (see definition of `D` in ./lang/calculus.sexp) *)
+(* note Flat and Orderless are attributes are not implemented so the derivative, while correct, is not in its simplest form *)
+(D (Plus (Power x 2) (Times 3 x)) x)
 (D (Times (Sin x) (Cos x)) x)
 (D (Exp (Power x 2)) x)
 ```

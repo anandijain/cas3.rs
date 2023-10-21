@@ -1,4 +1,4 @@
-// bool
+(* bool *)
 (set (And true true) true)
 (set (And true false) false)
 (set (And false true) false)
@@ -27,27 +27,27 @@
 (setd (Boole 0) false)
 (setd (Boole 1) true)
 
-// Identity laws for addition
-// Adding 0 to any number results in the number itself
+(* Identity laws for addition *)
+(* Adding 0 to any number results in the number itself *)
 (setd (Plus (pattern x (blank)) 0) x)
 (setd (Plus 0 (pattern x (blank))) x)
 
-// Identity laws for multiplication
-// Multiplying any number by 1 results in the number itself
+(* Identity laws for multiplication *)
+(* Multiplying any number by 1 results in the number itself *)
 (setd (Times (pattern x (blank)) 1) x)
 (setd (Times 1 (pattern x (blank))) x)
 
-// Absorbing laws for multiplication
-// Multiplying any number by 0 results in 0
-;; (setd (Times (pattern x (blank)) 0) 0)
-;; (setd (Times 0 (pattern x (blank))) 0)
+(* Absorbing laws for multiplication *)
+(* Multiplying any number by 0 results in 0 *)
+(* (setd (Times (pattern x (blank)) 0) 0) *)
+(* (setd (Times 0 (pattern x (blank))) 0) *)
 (setd (Times (pattern xs (blank_null_seq)) 0 (pattern ys (blank_null_seq))) 0)
 (setd (Times (pattern xs (blank_null_seq)) 1 (pattern ys (blank_null_seq))) (Times xs ys))
 
 
-// Identity laws for exponentiation
-// Raising any number to the power of 1 results in the number itself
-// Raising any number to the power of 0 results in 1
+(* Identity laws for exponentiation *)
+(* Raising any number to the power of 1 results in the number itself *)
+(* Raising any number to the power of 0 results in 1 *)
 (setd (Power (pattern x (blank)) 1) x)
 (setd (Power (pattern x (blank)) 0) 1)
 
@@ -62,12 +62,12 @@
 (setd (Rest (list (blank) (pattern rest (blank_null_seq)))) (list rest))
 (setd (Rest (pattern xs (blank_null_seq))) (Rest (list xs)))
 
-// note this definition is different than wolfram which gives some "Identity[a,b,c]" and a warning
+(* note this definition is different than wolfram which gives some "Identity[a,b,c]" and a warning *)
 (set (to_seq (list (pattern xs (blank_null_seq)))) xs)
 
-;; broken, implemented kernel side for now
-;; (setd (Map (pattern f (blank)) (list)) (list))
-;; (setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs))))))
+(* broken, implemented kernel side for now *)
+(* (setd (Map (pattern f (blank)) (list)) (list)) *)
+(* (setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs)))))) *)
 
 (setd (listq (pattern x (blank))) (sameq list (head x)))
 
@@ -77,4 +77,4 @@
 
 
 
-//(setd (Partition (pattern list (blank list)) (pattern n (blank Int)) (pattern d (blank Int))))
+(* (setd (Partition (pattern list (blank list)) (pattern n (blank Int)) (pattern d (blank Int)))) *)

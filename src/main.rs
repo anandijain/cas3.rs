@@ -21,7 +21,10 @@ use std::{fmt, path::Path};
 
 peg::parser! {
     grammar expr_parser() for str {
-        rule whitespace() = [' ' | '\t' | '\n' | '\r']*
+        rule comment()
+            = "(*" (!"*)" [_])* "*)"
+
+        rule whitespace() = ([' ' | '\t' | '\n' | '\r'] / comment())* // Allow whitespace or comments
 
         rule integer() -> Expr
             = n:$("-"? ['0'..='9']+ ) {? n.parse().map(Expr::Int).or(Err("integer")) }
@@ -43,6 +46,9 @@ peg::parser! {
 
         pub rule Expr() -> Expr
             = whitespace() e:(atom() / list()) whitespace() { e }
+
+        pub rule expressions() -> Vec<Expr>
+            = whitespace() e:Expr() ** whitespace() { e }
     }
 }
 
@@ -472,7 +478,7 @@ pub fn internal_functions_apply(
         let n = &evaluated_args[2];
         let mut res = list(vec!["list"]);
         res.push(x.clone());
-        if let Expr::Int(count ) = n {
+        if let Expr::Int(count) = n {
             for _i in 0..count.to_i64().unwrap() {
                 let fi = Expr::List(vec![f.clone(), res.last().unwrap().clone()]);
                 res.push(fi);
@@ -481,7 +487,7 @@ pub fn internal_functions_apply(
         } else {
             return reconstructed_ex;
         }
-    }else {
+    } else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -1177,31 +1183,34 @@ impl Highlighter for ReplHelper {
     }
 }
 
-pub fn run_file(ctx: &mut Context2, startup_path: &Path) -> Result<Expr> {
-    let file = File::open(startup_path)?;
+pub fn run_file(ctx: &mut Context2, filepath: &Path) -> Result<Expr> {
+    let file = File::open(filepath)?;
     let reader = BufReader::new(file);
-
+    let file_contents = std::fs::read_to_string(filepath)?;
     // i dont love this because it's ambigious whether or not something failed in reading the file or sth
     // or if the last expr in the file was a setd or something that returns a Null
+    println!("Running file: {}", filepath.display());
     let mut res = sym("Null");
-    for line in reader.lines() {
-        match line {
-            Ok(content) => {
-                if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
-                    continue;
-                }
-                if let Ok(ex) = &expr_parser::Expr(&content) {
+    let exprs = expr_parser::expressions(&file_contents).unwrap();
+    // for line in reader.lines() {
+    for expr in exprs {
+        // match line {
+            // Ok(content) => {
+            //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
+            //         continue;
+            //     }
+                // if let Ok(ex) = &expr_parser::Expr(&content) {
                     let mut stack = Expr::List(vec![]);
-                    res = evaluate(&mut stack, ctx, ex);
-                } else {
-                    eprintln!("Error parsing a line: {:?}", content);
-                }
+                    res = evaluate(&mut stack, ctx, &expr);
+                // } else {
+                    // eprintln!("Error parsing a line: {:?}", content);
+                // }
             }
-            Err(error) => {
-                eprintln!("Error reading a line: {:?}", error);
-            }
-        }
-    }
+            // Err(error) => {
+                // eprintln!("Error reading a line: {:?}", error);
+            // }
+        // }
+    // }
 
     Ok(res)
 }
@@ -1262,7 +1271,11 @@ pub fn run(
 
 fn main() -> Result<()> {
     // println!("{}", sym("hi").len());
-
+    let s = std::fs::read_to_string("./lang/test_comments.sexp").unwrap();
+    let exs = expr_parser::expressions(&s);
+    println!("{:?}", exs);
+    
+    // return Ok(());
     let h = ReplHelper {
         highlighter: MatchingBracketHighlighter::new(),
         colored_prompt: "".to_owned(),
@@ -1315,6 +1328,11 @@ pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parser() {
+        assert_eq!(parse("(f (* *hi* *)  x)"), parse("(f x)"));
+    }
 
     #[test]
     fn test_pattern_matching() {

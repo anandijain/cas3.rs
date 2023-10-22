@@ -14,8 +14,6 @@ use rustyline::{
     Completer, Editor, Helper, Hinter, Result, Validator,
 };
 use std::collections::HashMap;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::ops::{Deref, DerefMut};
 use std::{fmt, path::Path};
 
@@ -467,7 +465,7 @@ pub fn internal_functions_apply(
         let f = &evaluated_args[0];
         let mapargs = &evaluated_args[1];
 
-        for (i, arg) in mapargs[1..].iter().enumerate() {
+        for (_i, arg) in mapargs[1..].iter().enumerate() {
             let fi = Expr::List(vec![f.clone(), arg.clone()]);
             res.push(fi);
         }
@@ -706,14 +704,9 @@ fn named_rebuild_all(expr: Expr, map: &HashMap<Expr, Expr>) -> Expr {
     }
 }
 
-// fn fix_pos_map(offset:isize, pos: &Vec<usize>, pos_map: &HashMap<Vec<usize>, Expr>)->HashMap<Vec<usize>, Expr> {
-
-// }
-
-// )
-/// to fix pos_map. as you iterate es, and you keep track of the offset for the current list.
-/// then you want to adjust lookups into the posmap based on the position - offset.
-fn pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Expr>) -> Expr {
+// this adjusts lookups to the position map based on the sequences found in the current list
+fn final_pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Expr>) -> Expr {
+    // println!("pos: {:?}, pat: {}", pos, pat);
     if let Some(replacement) = pos_map.get(&pos) {
         return replacement.clone();
     }
@@ -725,12 +718,42 @@ fn pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Exp
             let mut offset: isize = 0;
             for (i, e) in es.iter().enumerate() {
                 let mut new_pos = pos.clone();
-                new_pos.push(i);
-                let new_e = pos_map_rebuild(new_pos, e.clone(), pos_map);
+                let pos_in_list = i as isize + offset;
+                // println!("{i}, pos_in_list: {} offset:{offset}", pos_in_list);
+                new_pos.push(pos_in_list as usize);
+                let new_e = final_pos_map_rebuild(new_pos, e.clone(), pos_map);
                 if head(&new_e) == sym("Sequence") {
                     offset += new_e.len() as isize - 2; // its -2 becasue 1 for the head and 1 for the original (blank_seq) object
                 }
+                // so pos[0..i-1] is the position of the current list
+                // we want to then look for all the position keys that have thsi as a prefix and adjust them
+                // but i think we only want to adjust on a final rebuild but not in the middle.
+                // when we are at the end of a list we are confirming the map works but haven't rebuilt anything, so our pat is still the original
                 // println!("{i}, new_e: {} offest: {offset}", new_e);
+                new_es.push(new_e);
+            }
+            Expr::List(new_es)
+        }
+        _ => pat,
+    }
+}
+
+/// to fix pos_map. as you iterate es, and you keep track of the offset for the current list.
+/// then you want to adjust lookups into the posmap based on the position - offset.
+/// the reason we still need this is for intermediate rebuilds where we have already spliced former sequences
+fn pos_map_rebuild(pos: Vec<usize>, pat: Expr, pos_map: &HashMap<Vec<usize>, Expr>) -> Expr {
+    if let Some(replacement) = pos_map.get(&pos) {
+        return replacement.clone();
+    }
+
+    match pat {
+        Expr::List(es) => {
+            let mut new_es = vec![];
+            // note in the case of blank_null_seq, this can be negative
+            for (i, e) in es.iter().enumerate() {
+                let mut new_pos = pos.clone();
+                new_pos.push(i);
+                let new_e = pos_map_rebuild(new_pos, e.clone(), pos_map);
                 new_es.push(new_e);
             }
             Expr::List(new_es)
@@ -778,6 +801,18 @@ fn rebuild_and_splice(
 ) -> Expr {
     splice_sequences(named_rebuild_all(
         pos_map_rebuild(pos.clone(), pat, pos_map),
+        named_map,
+    ))
+}
+
+fn final_rebuild_and_splice(
+    pat: Expr,
+    pos: &Vec<usize>,
+    pos_map: &HashMap<Vec<usize>, Expr>,
+    named_map: &HashMap<Expr, Expr>,
+) -> Expr {
+    splice_sequences(named_rebuild_all(
+        final_pos_map_rebuild(pos.clone(), pat, pos_map),
         named_map,
     ))
 }
@@ -842,14 +877,14 @@ fn my_match(
                 new_pos.push(i); // we are at the head
                 if head(pi) == sym("pattern") {
                     // println!("in pattern pi ");
-                    if let Some(from_map) = named_map.get(&pi) {
+                    if let Some(_from_map) = named_map.get(&pi) {
                         // here is an example that contradicts the below i think
                         //  (setd (Times (pattern x (blank Sym)) (pattern x (blank Sym))) (Pow x 2))
                         println!("we should have rebuilt to remove this i think");
                     }
                     let b = &pi[2];
                     let bt = &b[0];
-                    let p_name = &pi[1];
+                    // let p_name = &pi[1];
                     if bt == &sym("blank_seq") {
                         for j in 1..=es[1..].len() {
                             let mut elts = vec![sym("Sequence")];
@@ -996,7 +1031,8 @@ fn my_match(
                     }
                 }
             }
-            let final_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
+            let final_pat = final_rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
+            // let final_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
             // println!("final comparison: POS: {pos:?} | PAT: {pat} | NEW_PAT: {final_pat} | EX: {ex} || pos {pos_map:?} || named {named_map:?}");
             if final_pat == ex {
                 return true;
@@ -1184,8 +1220,8 @@ impl Highlighter for ReplHelper {
 }
 
 pub fn run_file(ctx: &mut Context2, filepath: &Path) -> Result<Expr> {
-    let file = File::open(filepath)?;
-    let reader = BufReader::new(file);
+    // let file = File::open(filepath)?;
+    // let reader = BufReader::new(file);
     let file_contents = std::fs::read_to_string(filepath)?;
     // i dont love this because it's ambigious whether or not something failed in reading the file or sth
     // or if the last expr in the file was a setd or something that returns a Null
@@ -1195,21 +1231,21 @@ pub fn run_file(ctx: &mut Context2, filepath: &Path) -> Result<Expr> {
     // for line in reader.lines() {
     for expr in exprs {
         // match line {
-            // Ok(content) => {
-            //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
-            //         continue;
-            //     }
-                // if let Ok(ex) = &expr_parser::Expr(&content) {
-                    let mut stack = Expr::List(vec![]);
-                    res = evaluate(&mut stack, ctx, &expr);
-                // } else {
-                    // eprintln!("Error parsing a line: {:?}", content);
-                // }
-            }
-            // Err(error) => {
-                // eprintln!("Error reading a line: {:?}", error);
-            // }
+        // Ok(content) => {
+        //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
+        //         continue;
+        //     }
+        // if let Ok(ex) = &expr_parser::Expr(&content) {
+        let mut stack = Expr::List(vec![]);
+        res = evaluate(&mut stack, ctx, &expr);
+        // } else {
+        // eprintln!("Error parsing a line: {:?}", content);
         // }
+    }
+    // Err(error) => {
+    // eprintln!("Error reading a line: {:?}", error);
+    // }
+    // }
     // }
 
     Ok(res)
@@ -1232,24 +1268,28 @@ pub fn run(
                                                            // saving every line (even if slow, just until its more stable)
                 rl.save_history("history.txt").unwrap();
 
-                let ex = expr_parser::Expr(&l);
-                match ex {
-                    Ok(expr) => {
-                        let mut stack = Expr::List(vec![]);
-                        let res = evaluate(&mut stack, &mut ctx, &expr);
-                        // println!("head: {}", head(&expr));
+                let exs = expr_parser::expressions(&l);
 
-                        // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                        // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
-                        //     .unwrap();
-                        // evaluate(&mut stack, &mut ctx, &in_i);
-                        let out_i =
-                            expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str()).unwrap();
-                        evaluate(&mut stack, &mut ctx, &out_i);
+                match exs {
+                    Ok(exprs) => {
+                        for expr in exprs {
+                            let mut stack = Expr::List(vec![]);
+                            let res = evaluate(&mut stack, &mut ctx, &expr);
+                            // println!("head: {}", head(&expr));
 
-                        println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
+                            // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
+                            // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
+                            //     .unwrap();
+                            // evaluate(&mut stack, &mut ctx, &in_i);
+                            let out_i =
+                                expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str())
+                                    .unwrap();
+                            evaluate(&mut stack, &mut ctx, &out_i);
 
-                        i += 1;
+                            println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
+
+                            i += 1;
+                        }
                     }
 
                     Err(err) => println!("Failed to parse: {}", err),
@@ -1614,7 +1654,8 @@ mod tests {
             let mut pos_map = HashMap::new();
             let mut named_map = HashMap::new();
             let m = my_match(ex.clone(), pat.clone(), &pos, &mut pos_map, &mut named_map);
-            let rebuilt_ex = rebuild_and_splice(pat.clone(), &vec![], &pos_map, &named_map);
+            let rebuilt_ex = final_rebuild_and_splice(pat.clone(), &vec![], &pos_map, &named_map);
+            // let rebuilt_ex = rebuild_and_splice(pat.clone(), &vec![], &pos_map, &named_map);
             println!("rebuilt:{rebuilt_ex:?}\n\npos:\n{pos_map:?}\nnamed:\n{named_map:?}\n\n");
 
             assert_eq!(m, *expected);
@@ -1623,6 +1664,15 @@ mod tests {
                 assert_eq!(rebuilt_ex, ex.clone());
             }
         }
+    }
+
+    #[test]
+    /// https://github.com/anandijain/cas3.rs/issues/1
+    fn issue_1() {
+        assert_eq!(
+            evalparse("(matchq (f a b 0 c) (f (blank_seq) 0 (blank_seq)))"),
+            sym("true")
+        )
     }
 }
 

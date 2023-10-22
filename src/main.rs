@@ -212,7 +212,7 @@ pub fn internal_functions_apply(
             )
         ));
     } else if nh == sym("sameq") {
-        println!("in sameq: evaluated_args: {:?}", evaluated_args);
+        // println!("in sameq: evaluated_args: {:?}", evaluated_args);
         let first_arg = &evaluated_args[0];
         let all_same = evaluated_args.iter().all(|arg| arg == first_arg);
         return Expr::Sym(format!("{}", all_same));
@@ -1537,6 +1537,14 @@ mod tests {
         );
         println!("listq ctx {:?}", ctx);
         assert_eq!(ctx_evalparse(&mut ctx, "(listq (list a b c))"), sym("true"));
+
+
+        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        // issue #2
+        assert_eq!(
+            ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
+            sym("true")
+        )
     }
 
     #[test]
@@ -1663,14 +1671,22 @@ mod tests {
         }
     }
 
-    #[test]
     /// https://github.com/anandijain/cas3.rs/issues/1
+    #[test]
     fn issue_1() {
         assert_eq!(
             evalparse("(matchq (f a b 0 c) (f (blank_seq) 0 (blank_seq)))"),
             sym("true")
         )
     }
+
+    // #[test]
+    // fn issue_2() {
+    //     assert_eq!(
+    //         evalparse("(sameq (Nest (f) x 2) ((f) ((f) x)))"),
+    //         sym("true")
+    //     )
+    // }
 }
 
 /*

@@ -505,11 +505,15 @@ pub fn internal_functions_apply(
                 // the "standard Wolfram Language iteration specification"
 
                 let mut res = Expr::List(vec![sym("list")]);
-                let var = &ls[0];
+                let var = &ls[1];
 
                 // this specific case is {i, imax}
-                if ls.len() == 2 {
-                    if let Expr::Int(imax) = &ls[1] {
+                if ls.len() == 3 {
+                    if ls[0] != sym("list") {
+                        dbg!("invalid range specification. need a list");
+                        // return reconstructed_ex;
+                    }
+                    if let Expr::Int(imax) = &ls[2] {
                         for i in 1..=imax.to_i64().unwrap() {
                             let mut e_i = Expr::List(vec![sym("replace_all")]);
                             e_i.push(table_body.clone());
@@ -519,14 +523,14 @@ pub fn internal_functions_apply(
                             res.push(e_i);
                         }
                         return res;
-                    } else if let Expr::List(vals) = &ls[1] {
+                    } else if let Expr::List(vals) = &ls[2] {
                         // this is the sequence case where you just
                         // Table[expr,{i,{i1,i2,…}}]
 
-                        if head(&ls[1]) != sym("list") {
-                            println!(
+                        if head(&ls[2]) != sym("list") {
+                            dbg!(
                                 "invalid range specification. need a list of values, gave {}",
-                                ls[1]
+                                &ls[2]
                             );
                             return reconstructed_ex;
                         }
@@ -541,12 +545,12 @@ pub fn internal_functions_apply(
                         }
                         return res;
                     } else {
-                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        dbg!("need an int or list for imax, reals not supported in iteration specification yet");
                         return sym("$Failed");
                     }
-                } else if ls.len() == 3 {
+                } else if ls.len() == 4 {
                     // this is {i, imin, imax}
-                    if let (Expr::Int(imin), Expr::Int(imax)) = (&ls[1], &ls[2]) {
+                    if let (Expr::Int(imin), Expr::Int(imax)) = (&ls[2], &ls[3]) {
                         for i in imin.to_i64().unwrap()..=imax.to_i64().unwrap() {
                             let mut e_i = Expr::List(vec![sym("replace_all")]);
                             e_i.push(table_body.clone());
@@ -559,13 +563,13 @@ pub fn internal_functions_apply(
                     } else {
                         // this is the sequence case where you just
                         // Table[expr,{i,{i1,i2,…}}]
-                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        dbg!("need an int or list for imax, reals not supported in iteration specification yet");
                         return sym("$Failed");
                     }
-                } else if ls.len() == 4 {
+                } else if ls.len() == 5 {
                     // this is {i, imin, imax, di}
                     // this is {i, imin, imax}
-                    if let [Expr::Int(imin), Expr::Int(imax), Expr::Int(di)] = &ls[1..] {
+                    if let [Expr::Int(imin), Expr::Int(imax), Expr::Int(di)] = &ls[2..] {
                         let rng = imin.to_i64().unwrap()..=imax.to_i64().unwrap();
                         let iter = rng.step_by(di.to_i64().unwrap() as usize);
                         for i in iter {
@@ -580,7 +584,7 @@ pub fn internal_functions_apply(
                     } else {
                         // this is the sequence case where you just
                         // Table[expr,{i,{i1,i2,…}}]
-                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        dbg!("need an int or list for imax, reals not supported in iteration specification yet");
                         return sym("$Failed");
                     }
                 }
@@ -590,8 +594,8 @@ pub fn internal_functions_apply(
         let range_lists = &evaluated_args[1..]; //.clone().reverse();
                                                 // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
                                                 // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
-        // let mut ex = Expr::List(vec![sym("Table")]);
-        // ex.push(table_body.clone());
+                                                // let mut ex = Expr::List(vec![sym("Table")]);
+                                                // ex.push(table_body.clone());
 
         let mut nested_table = table_body.clone();
         for range in range_lists.iter().rev() {
@@ -606,7 +610,6 @@ pub fn internal_functions_apply(
             nested_table = new_table;
         }
         return nested_table;
-
     } else {
         return Expr::List(
             std::iter::once(nh.clone())
@@ -1464,7 +1467,7 @@ pub fn evalparse(s: &str) -> Expr {
             let mut stack = Expr::List(vec![]);
             evaluate(&mut stack, &mut ctx, &expr)
         }
-        Err(err) => panic!("Failed to parse: {}", err),
+        Err(err) => panic!("Failed to parse: {s}: {err}"),
     }
 }
 
@@ -1475,7 +1478,7 @@ pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
             let mut stack = Expr::List(vec![]);
             evaluate(&mut stack, ctx, &expr)
         }
-        Err(err) => panic!("Failed to parse: {}", err),
+        Err(err) => panic!("Failed to parse: {s}: {err}"),
     }
 }
 
@@ -1800,6 +1803,28 @@ mod tests {
             evalparse("(matchq (f a b 0 c) (f (blank_seq) 0 (blank_seq)))"),
             sym("true")
         )
+    }
+    #[test]
+    fn table() {
+        let mut ctx = Context2 {
+            vars: HashMap::new(),
+        };
+        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        let cases = vec![
+            ("(Table f 3)", "(list f f f)"),
+            ("(Table i (list i 3))", "(list 1 2 3)"),
+            ("(Table i (list i 2 4))", "(list 2 3 4)"),
+            ("(Table i (list i 1 6 2))", "(list 1 3 5)"),
+            ("(Table i (list i (list 1.5 3.5)))", "(list 1.5 3.5)"),
+            (
+                "(Table (list i j) (list i 2) (list j 2))",
+                "(list (list (list 1 1) (list 1 2)) (list (list 2 1) (list 2 2)))",
+            ),
+        ];
+        for (lhs, rhs) in cases {
+            let res = ctx_evalparse(&mut ctx, lhs);
+            assert_eq!(res, expr_parser::Expr(rhs).unwrap());
+        }
     }
 
     // #[test]

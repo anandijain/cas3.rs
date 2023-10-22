@@ -85,11 +85,18 @@
 
 (* works but is not that general *)
 (* for example *)
+
 (* Range[x, x + 4] *)
 (* Range[1.2, 2.2, 0.15] *)
-(* 
-(setd (Range (pattern n (blank Int))) (NestList Succ 1 (Plus n -1)))
+(setd (Range (pattern n (blank Int))) (Table i (list i n)))
 (setd (Range 
-    (pattern min (blank Int)) 
-    (pattern max (blank Int))) 
-    (NestList Succ min (Plus max (Times -1 min)))) *)
+    (pattern imin (blank Int))
+    (pattern imax (blank Int))
+    ) (Table i (list i imin imax)))
+
+(setd (Range 
+    (pattern imin (blank Int))
+    (pattern imax (blank Int))
+    (pattern di (blank Int))
+    ) (Table i (list i imin imax di)))
+

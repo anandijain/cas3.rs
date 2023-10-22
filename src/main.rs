@@ -1275,12 +1275,9 @@ pub fn run(
                         for expr in exprs {
                             let mut stack = Expr::List(vec![]);
                             let res = evaluate(&mut stack, &mut ctx, &expr);
-                            // println!("head: {}", head(&expr));
-
-                            // ins and outs (works but makes ctx printing too verbose, and its just not that useful rn )
-                            // let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
-                            //     .unwrap();
-                            // evaluate(&mut stack, &mut ctx, &in_i);
+                            let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
+                                .unwrap();
+                            evaluate(&mut stack, &mut ctx, &in_i);
                             let out_i =
                                 expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str())
                                     .unwrap();

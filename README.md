@@ -4,6 +4,7 @@
 To run cas3.rs, make sure rust is installed, and run `cargo run --release` in the root directory.
 
 ## language highlights - todo make sure these are all tested
+the entire code block can be copy and pasted into the REPL
 ```wl
 (* Computing with Combinators *)
 (* First we define the sk rules *)

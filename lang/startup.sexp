@@ -24,8 +24,18 @@
 
 (set (Not (Not (pattern x (blank)))) x)
 
-(setd (Boole 0) false)
-(setd (Boole 1) true)
+(setd (If true (pattern x (blank)) (pattern y (blank))) x)
+(setd (If false (pattern x (blank)) (pattern y (blank))) y)
+
+(setd (If true (pattern x (blank))) x)
+(setd (If false (pattern x (blank))) Null)
+
+(setd (If true (pattern x (blank)) (pattern y (blank)) (pattern z (blank))) x)
+(setd (If false (pattern x (blank)) (pattern y (blank)) (pattern z (blank))) y)
+(setd (If (pattern t (blank)) (pattern x (blank)) (pattern y (blank)) (pattern z (blank))) z)
+
+(* (setd (Boole 0) false)
+(setd (Boole 1) true) *)
 
 (* Identity laws for addition *)
 (* Adding 0 to any number results in the number itself *)
@@ -69,12 +79,17 @@
 (* (setd (Map (pattern f (blank)) (list)) (list)) *)
 (* (setd (Map (pattern f (blank)) (list (pattern xs (blank_seq)))) (list (f (First xs)) (to_seq (Map f (Rest (list xs)))))) *)
 
-(setd (listq (pattern x (blank))) (sameq list (head x)))
+(setd (ListQ (pattern x (blank))) (sameq list (head x)))
 
+(setd (Succ (pattern n (blank Int))) (Plus n 1))
 
-(setd (Table (pattern val (blank)) 0) (list))
-(setd (Table (pattern val (blank)) (pattern n (blank Int))) (list val (to_seq (Table val (Plus n -1)))))
-
-
-
-(* (setd (Partition (pattern list (blank list)) (pattern n (blank Int)) (pattern d (blank Int)))) *)
+(* works but is not that general *)
+(* for example *)
+(* Range[x, x + 4] *)
+(* Range[1.2, 2.2, 0.15] *)
+(* 
+(setd (Range (pattern n (blank Int))) (NestList Succ 1 (Plus n -1)))
+(setd (Range 
+    (pattern min (blank Int)) 
+    (pattern max (blank Int))) 
+    (NestList Succ min (Plus max (Times -1 min)))) *)

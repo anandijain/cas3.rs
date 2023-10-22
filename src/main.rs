@@ -485,6 +485,128 @@ pub fn internal_functions_apply(
         } else {
             return reconstructed_ex;
         }
+    } else if nh == sym("Table") {
+        let table_body = &evaluated_args[0];
+
+        // todo: test if this works implemented in cas3 code
+        if evaluated_args.len() == 1 {
+            return table_body.clone();
+        }
+        if evaluated_args.len() == 2 {
+            // if int, we copy n times
+            if let Expr::Int(n) = &evaluated_args[1] {
+                return Expr::List(
+                    std::iter::once(sym("list"))
+                        .chain((0..n.to_i64().unwrap()).map(|_| evaluated_args[0].clone()))
+                        .collect(),
+                );
+            } else if let Expr::List(ls) = &evaluated_args[1] {
+                // this is the place where we want to make helpers for
+                // the "standard Wolfram Language iteration specification"
+
+                let mut res = Expr::List(vec![sym("list")]);
+                let var = &ls[0];
+
+                // this specific case is {i, imax}
+                if ls.len() == 2 {
+                    if let Expr::Int(imax) = &ls[1] {
+                        for i in 1..=imax.to_i64().unwrap() {
+                            let mut e_i = Expr::List(vec![sym("replace_all")]);
+                            e_i.push(table_body.clone());
+                            let local_rule =
+                                Expr::List(vec![sym("rule"), var.clone(), Expr::Int(i.into())]); // (rule var iter)
+                            e_i.push(local_rule);
+                            res.push(e_i);
+                        }
+                        return res;
+                    } else if let Expr::List(vals) = &ls[1] {
+                        // this is the sequence case where you just
+                        // Table[expr,{i,{i1,i2,…}}]
+
+                        if head(&ls[1]) != sym("list") {
+                            println!(
+                                "invalid range specification. need a list of values, gave {}",
+                                ls[1]
+                            );
+                            return reconstructed_ex;
+                        }
+
+                        for val in &vals[1..] {
+                            let mut e_i = Expr::List(vec![sym("replace_all")]);
+                            e_i.push(table_body.clone());
+                            let local_rule =
+                                Expr::List(vec![sym("rule"), var.clone(), val.clone()]); // (rule var iter)
+                            e_i.push(local_rule);
+                            res.push(e_i);
+                        }
+                        return res;
+                    } else {
+                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        return sym("$Failed");
+                    }
+                } else if ls.len() == 3 {
+                    // this is {i, imin, imax}
+                    if let (Expr::Int(imin), Expr::Int(imax)) = (&ls[1], &ls[2]) {
+                        for i in imin.to_i64().unwrap()..=imax.to_i64().unwrap() {
+                            let mut e_i = Expr::List(vec![sym("replace_all")]);
+                            e_i.push(table_body.clone());
+                            let local_rule =
+                                Expr::List(vec![sym("rule"), var.clone(), Expr::Int(i.into())]); // (rule var iter)
+                            e_i.push(local_rule);
+                            res.push(e_i);
+                        }
+                        return res;
+                    } else {
+                        // this is the sequence case where you just
+                        // Table[expr,{i,{i1,i2,…}}]
+                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        return sym("$Failed");
+                    }
+                } else if ls.len() == 4 {
+                    // this is {i, imin, imax, di}
+                    // this is {i, imin, imax}
+                    if let [Expr::Int(imin), Expr::Int(imax), Expr::Int(di)] = &ls[1..] {
+                        let rng = imin.to_i64().unwrap()..=imax.to_i64().unwrap();
+                        let iter = rng.step_by(di.to_i64().unwrap() as usize);
+                        for i in iter {
+                            let mut e_i = Expr::List(vec![sym("replace_all")]);
+                            e_i.push(table_body.clone());
+                            let local_rule =
+                                Expr::List(vec![sym("rule"), var.clone(), Expr::Int(i.into())]); // (rule var iter)
+                            e_i.push(local_rule);
+                            res.push(e_i);
+                        }
+                        return res;
+                    } else {
+                        // this is the sequence case where you just
+                        // Table[expr,{i,{i1,i2,…}}]
+                        println!("need an int or list for imax, reals not supported in iteration specification yet");
+                        return sym("$Failed");
+                    }
+                }
+            }
+        }
+
+        let range_lists = &evaluated_args[1..]; //.clone().reverse();
+                                                // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
+                                                // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
+        // let mut ex = Expr::List(vec![sym("Table")]);
+        // ex.push(table_body.clone());
+
+        let mut nested_table = table_body.clone();
+        for range in range_lists.iter().rev() {
+            let mut new_table = Expr::List(vec![sym("Table"), nested_table.clone()]);
+            new_table = match &mut new_table {
+                Expr::List(ref mut v) => {
+                    v.push(range.clone());
+                    new_table.clone()
+                }
+                _ => panic!("Unexpected expression type"),
+            };
+            nested_table = new_table;
+        }
+        return nested_table;
+
     } else {
         return Expr::List(
             std::iter::once(nh.clone())
@@ -1275,8 +1397,9 @@ pub fn run(
                         for expr in exprs {
                             let mut stack = Expr::List(vec![]);
                             let res = evaluate(&mut stack, &mut ctx, &expr);
-                            let in_i = expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
-                                .unwrap();
+                            let in_i =
+                                expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
+                                    .unwrap();
                             evaluate(&mut stack, &mut ctx, &in_i);
                             let out_i =
                                 expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str())
@@ -1537,7 +1660,6 @@ mod tests {
         );
         println!("listq ctx {:?}", ctx);
         assert_eq!(ctx_evalparse(&mut ctx, "(listq (list a b c))"), sym("true"));
-
 
         run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
         // issue #2

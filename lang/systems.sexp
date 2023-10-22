@@ -1,5 +1,3 @@
-(set (rule_30 (pattern p (blank)) (pattern r (blank)) (pattern q (blank))) (Xor p (Or r q)))
-
 (* combinators *)
 (set sk_rules 
     (list 
@@ -13,3 +11,6 @@
 (set sk_plus ((s (k s)) (s (k ((s (k s)) k)))))
 (set sk_times ((s (k s)) k))
 (set sk_pow ((s (k (s ((s k) k)))) k))
+
+(* CA *)
+(set (rule_30 (pattern p (blank)) (pattern r (blank)) (pattern q (blank))) (Xor p (Or r q)))

@@ -161,8 +161,8 @@ impl TableEntry {
     pub fn new() -> Self {
         Self {
             own: None,
-            down: Expr::List(vec![sym("list")]),
-            sub: Expr::List(vec![sym("list")]),
+            down: Expr::List(vec![sym("List")]),
+            sub: Expr::List(vec![sym("List")]),
         }
     }
 }
@@ -185,7 +185,7 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
 // can evaluated_args be empty
 // nh can be List too
 pub fn internal_functions_apply(
-    _stack: &mut Expr,
+    stack: &mut Expr,
     ctx: &mut Context2,
     nh: Expr,
     evaluated_args: Vec<Expr>,
@@ -375,8 +375,8 @@ pub fn internal_functions_apply(
             Expr::Sym(_) => {
                 if let Some(te) = ctx.vars.get_mut(&evaluated_args[0]) {
                     te.own = None;
-                    te.down = Expr::List(vec![sym("list")]);
-                    te.sub = Expr::List(vec![sym("list")]);
+                    te.down = Expr::List(vec![sym("List")]);
+                    te.sub = Expr::List(vec![sym("List")]);
                 }
                 return sym("Null");
             }
@@ -418,7 +418,7 @@ pub fn internal_functions_apply(
                     return ls[i as usize].clone();
                 }
                 Expr::List(indices) => {
-                    let mut results = vec![sym("list")];
+                    let mut results = vec![sym("List")];
                     for index in indices[1..].iter() {
                         match index {
                             Expr::Int(i) => {
@@ -461,7 +461,7 @@ pub fn internal_functions_apply(
     } else if nh == sym("Map") {
         // todo level spec
         // honestly i was hoping i could do this in cas3, not builtin but just to get things going
-        let mut res = list(vec!["list"]);
+        let mut res = list(vec!["List"]);
         let f = &evaluated_args[0];
         let mapargs = &evaluated_args[1];
 
@@ -474,7 +474,7 @@ pub fn internal_functions_apply(
         let f = &evaluated_args[0];
         let x = &evaluated_args[1];
         let n = &evaluated_args[2];
-        let mut res = list(vec!["list"]);
+        let mut res = list(vec!["List"]);
         res.push(x.clone());
         if let Expr::Int(count) = n {
             for _i in 0..count.to_i64().unwrap() {
@@ -492,24 +492,26 @@ pub fn internal_functions_apply(
         if evaluated_args.len() == 1 {
             return table_body.clone();
         }
+        let spec = evaluate(stack, ctx, &evaluated_args[1].clone());
+
         if evaluated_args.len() == 2 {
             // if int, we copy n times
-            if let Expr::Int(n) = &evaluated_args[1] {
+            if let Expr::Int(n) = &spec {
                 return Expr::List(
-                    std::iter::once(sym("list"))
+                    std::iter::once(sym("List"))
                         .chain((0..n.to_i64().unwrap()).map(|_| evaluated_args[0].clone()))
                         .collect(),
                 );
-            } else if let Expr::List(ls) = &evaluated_args[1] {
+            } else if let Expr::List(ls) = &spec {
                 // this is the place where we want to make helpers for
                 // the "standard Wolfram Language iteration specification"
 
-                let mut res = Expr::List(vec![sym("list")]);
+                let mut res = Expr::List(vec![sym("List")]);
                 let var = &ls[1];
 
                 // this specific case is {i, imax}
                 if ls.len() == 3 {
-                    if ls[0] != sym("list") {
+                    if ls[0] != sym("List") {
                         dbg!("invalid range specification. need a list");
                         // return reconstructed_ex;
                     }
@@ -527,23 +529,23 @@ pub fn internal_functions_apply(
                         // this is the sequence case where you just
                         // Table[expr,{i,{i1,i2,…}}]
 
-                        if head(&ls[2]) != sym("list") {
+                        if head(&ls[2]) != sym("List") {
                             dbg!(
                                 "invalid range specification. need a list of values, gave {}",
                                 &ls[2]
                             );
-                            return reconstructed_ex;
+                            // return reconstructed_ex;
+                        } else {
+                            for val in &vals[1..] {
+                                let mut e_i = Expr::List(vec![sym("replace_all")]);
+                                e_i.push(table_body.clone());
+                                let local_rule =
+                                    Expr::List(vec![sym("rule"), var.clone(), val.clone()]); // (rule var iter)
+                                e_i.push(local_rule);
+                                res.push(e_i);
+                            }
+                            return res;
                         }
-
-                        for val in &vals[1..] {
-                            let mut e_i = Expr::List(vec![sym("replace_all")]);
-                            e_i.push(table_body.clone());
-                            let local_rule =
-                                Expr::List(vec![sym("rule"), var.clone(), val.clone()]); // (rule var iter)
-                            e_i.push(local_rule);
-                            res.push(e_i);
-                        }
-                        return res;
                     } else {
                         dbg!("need an int or list for imax, reals not supported in iteration specification yet");
                         return sym("$Failed");
@@ -610,7 +612,20 @@ pub fn internal_functions_apply(
             nested_table = new_table;
         }
         return nested_table;
-    } else {
+    }
+    // else if nh == sym("Join") {
+    //     let ha = head(&evaluated_args[0]);
+    //     let res = vec![ha];
+    //     for e in evaluated_args[1..].iter() {
+    //         if ha != head(e) {
+    //             println!("Join: heads of arguments are not all the same");
+    //             return reconstructed_ex;
+    //         }
+
+    //     }
+
+    // }
+    else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -656,7 +671,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
 
                 // step 6
                 // the use of a separate stack here is questionable
-                // also to note that when we use "contains" on it, we also do a comparison against the head ("list"), which is wrong
+                // also to note that when we use "contains" on it, we also do a comparison against the head ("List"), which is wrong
                 // but for practical purposes shouldn't cause a problem
 
                 // the most important next step here is making sure that (attrs set) works correctly
@@ -675,7 +690,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // 3. find a matching rule in dvs to (attrs h)
                 // if no matching rule found, return "(list)"
 
-                let mut nh_attrs = Expr::List(vec![sym("list")]);
+                let mut nh_attrs = Expr::List(vec![sym("List")]);
 
                 if let Expr::Sym(_) = nh.clone() {
                     let te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
@@ -708,7 +723,7 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 }
 
                 // println!("nh_attrs: {:?}", nh_attrs);
-                // assert!(head(&nh_attrs) == sym("list"));
+                // assert!(head(&nh_attrs) == sym("List"));
                 if nh_attrs.contains(&sym("HoldAllComplete")) {
                     // skip to 14
                     todo!();
@@ -1192,7 +1207,7 @@ fn my_match(
 }
 
 pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
-    let mut rules = Expr::List(vec![sym("list")]);
+    let mut rules = Expr::List(vec![sym("List")]);
     for (name, binding) in bindings.clone() {
         rules.push(Expr::List(vec![sym("rule"), sym(&name), binding.clone()]));
     }
@@ -1200,7 +1215,7 @@ pub fn bindings_to_rules(bindings: &HashMap<String, Expr>) -> Expr {
 }
 
 pub fn pat_bindings_to_rules(bindings: &HashMap<Expr, Expr>) -> Expr {
-    let mut rules = Expr::List(vec![sym("list")]);
+    let mut rules = Expr::List(vec![sym("List")]);
     for (pat, binding) in bindings.clone() {
         if let Expr::List(ps) = pat {
             let p_name = &ps[1]; // (pattern x (blank))
@@ -1218,7 +1233,7 @@ pub fn norm_rules(rules: &Expr) -> Vec<Expr> {
     if head(rules) == sym("rule") || head(rules) == sym("rule_delayed") {
         return vec![rules.clone()];
     } else {
-        assert_eq!(head(rules), sym("list"));
+        assert_eq!(head(rules), sym("List"));
         return rules.clone()[1..].to_vec();
     };
 }
@@ -1557,40 +1572,40 @@ mod tests {
 
         // list of rules does first one that matches
         assert_eq!(
-            evalparse("(replace x (list (rule a b) (rule x y)))"),
+            evalparse("(replace x (List (rule a b) (rule x y)))"),
             sym("y")
         );
         assert_eq!(
-            evalparse("(replace x (list (rule x y) (rule x z)))"),
+            evalparse("(replace x (List (rule x y) (rule x z)))"),
             sym("y")
         );
 
         // doesn't keep going
         assert_eq!(
-            evalparse("(replace x (list (rule x y) (rule y z)))"),
+            evalparse("(replace x (List (rule x y) (rule y z)))"),
             sym("y")
         );
 
         // case where no rules apply
         assert_eq!(
-            evalparse("(replace_all x (list (rule y a) (rule z b)))"),
+            evalparse("(replace_all x (List (rule y a) (rule z b)))"),
             sym("x")
         );
 
-        // test for blank with head + nested list
+        // test for blank with head + nested List
         assert_eq!(
-            evalparse(r#"(replace_all (list 1 1.5 Pi (list a 2)) (rule (blank Int) "hi"))"#),
-            expr_parser::Expr(r#"(list "hi" 1.5 Pi (list a "hi"))"#).unwrap()
+            evalparse(r#"(replace_all (List 1 1.5 Pi (List a 2)) (rule (blank Int) "hi"))"#),
+            expr_parser::Expr(r#"(List "hi" 1.5 Pi (List a "hi"))"#).unwrap()
         );
 
         assert_eq!(
-            evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1)))"),
-            expr_parser::Expr("(list 1 (power 1 2) y z)").unwrap()
+            evalparse("(replace_all (List x (power x 2) y z) (List (rule x 1)))"),
+            expr_parser::Expr("(List 1 (power 1 2) y z)").unwrap()
         );
 
         assert_eq!(
-            evalparse("(replace_all (list x (power x 2) y z) (list (rule x 1) (rule y 2)))"),
-            expr_parser::Expr("(list 1 (power 1 2) 2 z)").unwrap()
+            evalparse("(replace_all (List x (power x 2) y z) (List (rule x 1) (rule y 2)))"),
+            expr_parser::Expr("(List 1 (power 1 2) 2 z)").unwrap()
         );
 
         assert_eq!(
@@ -1598,11 +1613,11 @@ mod tests {
             expr_parser::Expr("(plus 1 (f 2) (f 4))").unwrap()
         );
 
-        let s = "(replace_repeated (list (f (f x)) (f x) (g (f x)) (f (g (f x)))) (list (rule (f (pattern x (blank))) x)))";
-        // todo test s above to give (list x x (g x) (g x))
+        let s = "(replace_repeated (List (f (f x)) (f x) (g (f x)) (f (g (f x)))) (List (rule (f (pattern x (blank))) x)))";
+        // todo test s above to give (List x x (g x) (g x))
         assert_eq!(
             evalparse(s),
-            expr_parser::Expr("(list x x (g x) (g x))").unwrap()
+            expr_parser::Expr("(List x x (g x) (g x))").unwrap()
         );
         // (s k) is false, and k is true
         // Combinator reduction of And for Tuples[{True, False}]
@@ -1617,7 +1632,7 @@ mod tests {
             ("((((s s) k) k) (s k))", "(s k)"),
             ("((((s s) k) k) k)", "k"),
         ];
-        let crules_str = "(list (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))";
+        let crules_str = "(List (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))";
         for (input, res) in test_cases.iter() {
             assert_eq!(
                 evalparse(&format!("(rr {} {crules_str})", input)),
@@ -1641,7 +1656,7 @@ mod tests {
     #[test]
     fn list_ops() {
         assert_eq!(
-            evalparse("(sameq (Part (f x y z) (list 1 2 3)) (list x y z))"),
+            evalparse("(sameq (Part (f x y z) (List 1 2 3)) (List x y z))"),
             sym("true")
         );
     }
@@ -1805,20 +1820,26 @@ mod tests {
         )
     }
     #[test]
-    fn table() {
+    fn table_tests() {
         let mut ctx = Context2 {
             vars: HashMap::new(),
         };
         run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        ctx_evalparse(&mut ctx, "(set xs (List 1 2 3 4 5))");
+        
         let cases = vec![
-            ("(Table f 3)", "(list f f f)"),
-            ("(Table i (list i 3))", "(list 1 2 3)"),
-            ("(Table i (list i 2 4))", "(list 2 3 4)"),
-            ("(Table i (list i 1 6 2))", "(list 1 3 5)"),
-            ("(Table i (list i (list 1.5 3.5)))", "(list 1.5 3.5)"),
+            ("(Table f 3)", "(List f f f)"),
+            ("(Table i (List i 3))", "(List 1 2 3)"),
+            ("(Table i (List i 2 4))", "(List 2 3 4)"),
+            ("(Table i (List i 1 6 2))", "(List 1 3 5)"),
+            ("(Table i (List i (List 1.5 3.5)))", "(List 1.5 3.5)"),
             (
-                "(Table (list i j) (list i 2) (list j 2))",
-                "(list (list (list 1 1) (list 1 2)) (list (list 2 1) (list 2 2)))",
+                "(Table (List i j) (List i 2) (List j 2))",
+                "(List (List (List 1 1) (List 1 2)) (List (List 2 1) (List 2 2)))",
+            ),
+            (
+                "(Table (Part xs (List i (Plus i 1) (Plus i 2))) (List i (Plus (Length xs) -2)))",
+                "(List (List 1 2 3) (List 2 3 4) (List 3 4 5))",
             ),
         ];
         for (lhs, rhs) in cases {

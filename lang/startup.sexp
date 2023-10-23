@@ -67,13 +67,13 @@
 (set (Fac 1) 1)
 (set (Fac (pattern n (blank Int))) (Times n (Fac (Plus n -1))))
 
-(setd (First (list (pattern x (blank)) (pattern rest (blank_null_seq)))) x)
-(setd (First (pattern xs (blank_null_seq))) (First (list xs)))
-(setd (Rest (list (blank) (pattern rest (blank_null_seq)))) (list rest))
-(setd (Rest (pattern xs (blank_null_seq))) (Rest (list xs)))
+(setd (First (List (pattern x (blank)) (pattern rest (blank_null_seq)))) x)
+(setd (First (pattern xs (blank_null_seq))) (First (List xs)))
+(setd (Rest (List (blank) (pattern rest (blank_null_seq)))) (List rest))
+(setd (Rest (pattern xs (blank_null_seq))) (Rest (List xs)))
 
 (* note this definition is different than wolfram which gives some "Identity[a,b,c]" and a warning *)
-(set (to_seq (list (pattern xs (blank_null_seq)))) xs)
+(set (to_seq (List (pattern xs (blank_null_seq)))) xs)
 
 (* broken, implemented kernel side for now *)
 (* (setd (Map (pattern f (blank)) (list)) (list)) *)
@@ -88,15 +88,17 @@
 
 (* Range[x, x + 4] *)
 (* Range[1.2, 2.2, 0.15] *)
-(setd (Range (pattern n (blank Int))) (Table i (list i n)))
+(setd (Range (pattern n (blank Int))) (Table i (List i n)))
 (setd (Range 
     (pattern imin (blank Int))
     (pattern imax (blank Int))
-    ) (Table i (list i imin imax)))
+    ) (Table i (List i imin imax)))
 
 (setd (Range 
     (pattern imin (blank Int))
     (pattern imax (blank Int))
     (pattern di (blank Int))
-    ) (Table i (list i imin imax di)))
+    ) (Table i (List i imin imax di)))
+
+
 

@@ -5,7 +5,10 @@ use std::{
 };
 
 use ordered_float;
-use rug::Integer;
+// use rug::Integer;
+use num_bigint::BigInt;
+use num_traits::cast::ToPrimitive;
+
 use rustyline::{
     config::Configurer,
     error::ReadlineError,
@@ -56,8 +59,8 @@ fn parse(s: &str) -> Expr {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Expr {
-    // Int(num_bigint::BigInt),
-    Int(Integer),
+    Int(num_bigint::BigInt),
+    // Int(Integer),
     Real(ordered_float::NotNan<f64>),
     Sym(String),
     Str(String),

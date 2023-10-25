@@ -1,3 +1,4 @@
+extern crate cairo;
 extern crate peg;
 use std::{
     borrow::Cow::{self, Borrowed, Owned},
@@ -9,6 +10,7 @@ use ordered_float::{self, NotNan};
 // use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 
+use cairo::{Context, SvgSurface};
 use rustyline::{
     config::Configurer,
     error::ReadlineError,
@@ -16,6 +18,7 @@ use rustyline::{
     validate::MatchingBracketValidator,
     Completer, Editor, Helper, Hinter, Result, Validator,
 };
+
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::time::{Duration, Instant};
@@ -32,7 +35,7 @@ peg::parser! {
             = n:$("-"? ['0'..='9']+ ) {? n.parse().map(Expr::Int).or(Err("integer")) }
 
         rule real() -> Expr
-            = n:$("-"? ['0'..='9']* "." ['0'..='9']+ ) {? n.parse().map(Expr::Real).or(Err("real")) }
+            = n:$("-"? ['0'..='9']* "." ['0'..='9']* ) {? n.parse().map(Expr::Real).or(Err("real")) }
 
         rule symbol() -> Expr
             = s:$(['a'..='z' | 'A'..='Z' | '?' | '$'] ['a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' ]* ) { Expr::Sym(s.into()) }
@@ -184,6 +187,77 @@ pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
         None
     }
 }
+
+/// i hate this function 
+fn unpack_mat(ex: Expr) -> Option<Vec<Vec<(f64, f64, f64)>>> {
+    let mut result: Vec<Vec<(f64, f64, f64)>> = vec![];
+
+    if let Expr::List(outer_list) = ex {
+        // println!("outerr elem: {:?}", outer_list[0]);
+        for outer_elem in &outer_list[1..] {
+            if let Expr::List(inner_list) = outer_elem {
+                let mut inner_vec: Vec<(f64, f64, f64)> = vec![];
+                // println!("inner elem: {:?}", inner_list[0]);
+                for inner_elem in &inner_list[1..] {
+                    if let Expr::List(tuple_list) = inner_elem {
+                        // println!("tuple_list: {:?}", tuple_list);
+                        if tuple_list.len() == 4 {
+                            if let (Expr::Real(a), Expr::Real(b), Expr::Real(c)) =
+                                (&tuple_list[1], &tuple_list[2], &tuple_list[3])
+                            {
+                                inner_vec.push((a.into_inner(), b.into_inner(), c.into_inner()));
+                            } else {
+                                return None; // one of the elements was not a Real
+                            }
+                        } else {
+                            return None; // tuple_list did not contain exactly 3 elements
+                        }
+                    } else {
+                        return None; // inner_elem was not a List
+                    }
+                }
+                result.push(inner_vec);
+            } else {
+                return None; // outer_elem was not a List
+            }
+        }
+        Some(result)
+    } else {
+        None // ex was not a List
+    }
+}
+
+fn create_svg_from_colors(colors: Vec<Vec<(f64, f64, f64)>>, filename: &str, scale_factor: i32) {
+    let rows = colors.len();
+    let cols = colors[0].len(); // Assuming all rows have the same length
+
+    let width = cols as i32 * scale_factor;
+    let height = rows as i32 * scale_factor;
+
+    // Create SvgSurface
+    let surface = SvgSurface::new(width as f64, height as f64, Some(filename))
+        .expect("Couldn't create SVG surface");
+
+    // Create Context for drawing
+    let cr = Context::new(&surface).expect("Couldn't create Cairo context");
+
+    // Scale the coordinate system
+    cr.scale(scale_factor as f64, scale_factor as f64);
+
+    // Loop through each cell to draw rectangles with specified colors
+    for (i, row) in colors.iter().enumerate() {
+        for (j, &(r, g, b)) in row.iter().enumerate() {
+            cr.rectangle(j as f64, i as f64, 1.0, 1.0);
+            cr.set_source_rgb(r, g, b);
+            cr.fill().expect("Failed to fill rectangle");
+        }
+    }
+
+    // Finish drawing
+    cr.show_page().expect("Failed to save SVG");
+}
+
+// fn export()
 
 // are we guaranteed that we have a list here?
 // can evaluated_args be empty
@@ -656,6 +730,20 @@ pub fn internal_functions_apply(
             Expr::Real(NotNan::new(elapsed_seconds).unwrap()),
             res,
         ])
+    } else if nh == sym("Export") {
+        let dst = &evaluated_args[0];
+        let ex = &evaluated_args[1];
+        // println!("ex: {:?}", ex);
+        let m = unpack_mat(ex.clone()).unwrap();
+        let filename = match dst {
+            Expr::Str(s) => s,
+            _ => {
+                println!("Export: first argument must be a string");
+                return sym("$Failed");
+            }
+        };
+        create_svg_from_colors(m, filename, 50);
+        return sym("Null");
     } else {
         return Expr::List(
             std::iter::once(nh.clone())
@@ -811,7 +899,9 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 let exprime = match nh.clone() {
                     // we dont need to panic here "abc"[foo] doesn't
                     Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => {
-                        panic!("head must be a symbol, got {nh}")
+                        // note: WL doesn't give note in this case
+                        println!("head must be a symbol, got {nh}");
+                        return reconstructed_ex;
                     }
                     // this is the down_value case, bcause the head
                     Expr::Sym(_) => {
@@ -1514,10 +1604,12 @@ fn main() -> Result<()> {
         vars: HashMap::new(),
     };
 
+    startup_attrs(&mut ctx);
     run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
     run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
     run_file(&mut ctx, Path::new("lang/calculus.sexp"))?;
-    startup_attrs(&mut ctx);
+    // run_file(&mut ctx, Path::new("lang/systems.sexp"))?;
+
     run(rl, ctx)?;
     Ok(())
 }
@@ -1921,11 +2013,22 @@ mod tests {
         let cases = vec![
             ("(matchq a (Alternatives a b))", sym("true")),
             ("(matchq (f a) (f (Alternatives a b)))", sym("true")),
-            ("(matchq (f a b c) (Alternatives a (f (blank_seq))))", sym("true")),
-            ("(matchq (f a b c) (Alternatives a (f (pattern xs (blank_seq)))))", sym("true")),
-            ("(matchq (f a b c) (Alternatives a (f (blank_seq))))", sym("true")),
-            ("(matchq (f) (Alternatives a (f (blank_seq))))", sym("false")),
-
+            (
+                "(matchq (f a b c) (Alternatives a (f (blank_seq))))",
+                sym("true"),
+            ),
+            (
+                "(matchq (f a b c) (Alternatives a (f (pattern xs (blank_seq)))))",
+                sym("true"),
+            ),
+            (
+                "(matchq (f a b c) (Alternatives a (f (blank_seq))))",
+                sym("true"),
+            ),
+            (
+                "(matchq (f) (Alternatives a (f (blank_seq))))",
+                sym("false"),
+            ),
             // ("(matchq a (Alternatives a b))", sym("true")),
         ];
 

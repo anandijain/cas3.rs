@@ -42,3 +42,6 @@
 
 (set ls (replace_all (NestList foo u0 20) (List (rule false 0) (rule true 1))))
 
+(* rendering *)
+(set ps (replace_all ls (List (rule 0 (List 1. 1. 1.)) (rule 1 (List 0. 0. 0.)))))
+(Export "rule_30.svg" ps)

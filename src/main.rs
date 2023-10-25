@@ -4,9 +4,9 @@ use std::{
     ops::{Add, Mul},
 };
 
-use ordered_float;
+use ordered_float::{self, NotNan};
 // use rug::Integer;
-use num_bigint::BigInt;
+// use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
 
 use rustyline::{
@@ -18,6 +18,7 @@ use rustyline::{
 };
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
+use std::time::{Duration, Instant};
 use std::{fmt, path::Path};
 
 peg::parser! {
@@ -433,7 +434,7 @@ pub fn internal_functions_apply(
                                 results.push(ls[i as usize].clone());
                             }
                             _ => {
-                                println!("Part: each index in the list must be an integer");
+                                // println!("Part: each index in the list must be an integer");
                                 return reconstructed_ex;
                             }
                         }
@@ -441,7 +442,7 @@ pub fn internal_functions_apply(
                     return Expr::List(results);
                 }
                 _ => {
-                    println!("Part: index must be an integer or a list of integers");
+                    // println!("Part: index must be an integer or a list of integers");
                     return reconstructed_ex;
                 }
             },
@@ -464,7 +465,8 @@ pub fn internal_functions_apply(
     } else if nh == sym("Map") {
         // todo level spec
         // honestly i was hoping i could do this in cas3, not builtin but just to get things going
-        let mut res = list(vec!["List"]);
+
+        let mut res = liste(vec![head(&evaluated_args[1])]);
         let f = &evaluated_args[0];
         let mapargs = &evaluated_args[1];
 
@@ -481,7 +483,11 @@ pub fn internal_functions_apply(
         res.push(x.clone());
         if let Expr::Int(count) = n {
             for _i in 0..count.to_i64().unwrap() {
-                let fi = Expr::List(vec![f.clone(), res.last().unwrap().clone()]);
+                let fi = evaluate(
+                    stack,
+                    ctx,
+                    &Expr::List(vec![f.clone(), res.last().unwrap().clone()]),
+                );
                 res.push(fi);
             }
             return res;
@@ -615,20 +621,42 @@ pub fn internal_functions_apply(
             nested_table = new_table;
         }
         return nested_table;
-    }
-    // else if nh == sym("Join") {
-    //     let ha = head(&evaluated_args[0]);
-    //     let res = vec![ha];
-    //     for e in evaluated_args[1..].iter() {
-    //         if ha != head(e) {
-    //             println!("Join: heads of arguments are not all the same");
-    //             return reconstructed_ex;
-    //         }
+    } else if nh == sym("Join") {
+        if !matches!(&evaluated_args[0], Expr::List(ls)) {
+            println!("Join joins lists dummy!");
+            return reconstructed_ex;
+        }
 
-    //     }
+        let ha = head(&evaluated_args[0]);
 
-    // }
-    else {
+        let mut res = vec![ha.clone()];
+        for e in evaluated_args {
+            if ha != head(&e) {
+                println!("Join: heads of arguments are not all the same");
+                return reconstructed_ex;
+            }
+            if let Expr::List(ls) = e {
+                res.append(&mut ls[1..].to_vec());
+            } else {
+                //fix
+                return sym("Failed");
+            }
+        }
+        return Expr::List(res);
+    } else if nh == sym("Timing") {
+        let t1 = Instant::now();
+        let res = evaluate(stack, ctx, &evaluated_args[0]);
+        let dt = t1.elapsed(); // Capture the elapsed time
+
+        // Convert duration to seconds
+        let elapsed_seconds = dt.as_secs() as f64 + dt.subsec_nanos() as f64 * 1e-9;
+        // NotNan
+        Expr::List(vec![
+            sym("List"),
+            Expr::Real(NotNan::new(elapsed_seconds).unwrap()),
+            res,
+        ])
+    } else {
         return Expr::List(
             std::iter::once(nh.clone())
                 .chain(evaluated_args.clone().to_owned())
@@ -691,10 +719,11 @@ pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
                 // 1. assume h::Sym
                 // 2. get dvs of attr
                 // 3. find a matching rule in dvs to (attrs h)
-                // if no matching rule found, return "(list)"
+                // if no matching rule found, return "(List)"
 
                 let mut nh_attrs = Expr::List(vec![sym("List")]);
-
+                // #16 - this is what we need to speed up. ideally bypass the pattern matcher somehow
+                // we know/can assume we are looking up (attrs SYM)
                 if let Expr::Sym(_) = nh.clone() {
                     let te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
                     // (down_values attrs)
@@ -989,10 +1018,24 @@ fn my_match(
     if head(&pattern_expr) == sym("hold_pattern") {
         pat = pattern_expr[1].clone();
     }
-    // println!("entering my_match: {pos:?} | {ex} | {pat} | {pos_map:?} | {named_map:?}");
-    let pat_syms = vec![sym("blank"), sym("blank_seq")];
+    // if head(&pat) != sym("attrs") && pat != sym("attrs") && ex != sym("matchq") {
+    //     println!("M: {pos:?} | {ex} | {pat} | {pos_map:?} | {named_map:?}");
+    // }
+
+    let pat_syms = vec![sym("blank"), sym("blank_seq"), sym("blank_null_seq")];
+    if head(&pat) == sym("Alternatives") {
+        for p in &pat[1..] {
+            if my_match(ex.clone(), p.clone(), pos, pos_map, named_map) {
+                pos_map.insert(pos.clone(), p.clone());
+                return true;
+            }
+        }
+        return false;
+    }
+
     match (ex.clone(), pat.clone()) {
         (Expr::List(es), Expr::List(ps)) => {
+            // this first block determines if the pattern matches the entire list
             if ps[0] == sym("pattern") {
                 if let Some(from_map) = named_map.get(&pat) {
                     return &ex == from_map;
@@ -1176,7 +1219,11 @@ fn my_match(
             }
             let final_pat = final_rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
             // let final_pat = rebuild_and_splice(pat.clone(), &pos, pos_map, named_map);
-            // println!("final comparison: POS: {pos:?} | PAT: {pat} | NEW_PAT: {final_pat} | EX: {ex} || pos {pos_map:?} || named {named_map:?}");
+
+            // todo remove these conditions when we fast path attribute lookup
+            // if head(&pat) != sym("attrs") && pat != sym("attrs") {
+            //     println!("final comparison: POS: {pos:?} | PAT: {pat} | NEW_PAT: {final_pat} | EX: {ex} || pos {pos_map:?} || named {named_map:?}");
+            // }
             if final_pat == ex {
                 return true;
             }
@@ -1284,7 +1331,6 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
     }
 
     match expr {
-        Expr::Sym(_) | Expr::Int(_) | Expr::Real(_) | Expr::Str(_) => replace(expr, rules),
         Expr::List(list) => {
             let new_list: Vec<Expr> = list
                 .iter()
@@ -1292,6 +1338,7 @@ pub fn replace_all(expr: &Expr, rules: &Expr) -> Expr {
                 .collect();
             Expr::List(new_list)
         }
+        _ => replace(expr, rules),
     }
 }
 
@@ -1829,7 +1876,7 @@ mod tests {
         };
         run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
         ctx_evalparse(&mut ctx, "(set xs (List 1 2 3 4 5))");
-        
+
         let cases = vec![
             ("(Table f 3)", "(List f f f)"),
             ("(Table i (List i 3))", "(List 1 2 3)"),
@@ -1851,13 +1898,41 @@ mod tests {
         }
     }
 
-    // #[test]
-    // fn issue_2() {
-    //     assert_eq!(
-    //         evalparse("(sameq (Nest (f) x 2) ((f) ((f) x)))"),
-    //         sym("true")
-    //     )
-    // }
+    #[test]
+    fn issue_2() {
+        let mut ctx = Context2 {
+            vars: HashMap::new(),
+        };
+        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        assert_eq!(
+            ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
+            sym("true")
+        )
+    }
+
+    #[test]
+    fn alternatives_test() {
+        let mut ctx = Context2 {
+            vars: HashMap::new(),
+        };
+        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        let cases = vec![
+            ("(matchq a (Alternatives a b))", sym("true")),
+            ("(matchq (f a) (f (Alternatives a b)))", sym("true")),
+            ("(matchq (f a b c) (Alternatives a (f (blank_seq))))", sym("true")),
+            ("(matchq (f a b c) (Alternatives a (f (pattern xs (blank_seq)))))", sym("true")),
+            ("(matchq (f a b c) (Alternatives a (f (blank_seq))))", sym("true")),
+            ("(matchq (f) (Alternatives a (f (blank_seq))))", sym("false")),
+
+            // ("(matchq a (Alternatives a b))", sym("true")),
+        ];
+
+        for (c, e) in cases {
+            assert_eq!(ctx_evalparse(&mut ctx, c), e)
+        }
+    }
 }
 
 /*

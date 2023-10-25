@@ -79,6 +79,10 @@ combinators
 https://writings.stephenwolfram.com/2020/12/combinators-a-centennial-view/
 https://writings.stephenwolfram.com/2020/12/combinators-and-the-story-of-computation/
 
+cellular automata 
+https://atlas.wolfram.com/01/01/
+
+
 ```mathematica
 k[x_][y_] := x
 s[x_][y_][z_] := x[z][y[z]]
@@ -278,3 +282,5 @@ y -> {a,b}, z -> c, lengths match, we are done
 ((g x) ((g x) ((g x) y)))
 
 ((g x) ((g x) ((g x) y)))
+
+

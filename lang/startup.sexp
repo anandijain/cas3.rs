@@ -100,5 +100,3 @@
     (pattern di (blank Int))
     ) (Table i (List i imin imax di)))
 
-
-

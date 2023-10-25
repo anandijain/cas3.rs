@@ -6,4 +6,6 @@
 (set (attrs true) (list locked protected))
 (set (attrs false) (list locked protected))
 
+(set (attrs rule) (list SequenceHold))
 (set (attrs Table) (list HoldAll))
+(set (attrs Timing) (list HoldAll))

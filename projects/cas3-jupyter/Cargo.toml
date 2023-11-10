@@ -11,7 +11,7 @@ edition = "2021"
 exclude = ["package.json", "tests/**"]
 
 [[bin]]
-name = "jupyter-valkyrie"
+name = "jupyter-cas3"
 path = "src/main.rs"
 
 [dependencies]
@@ -28,9 +28,9 @@ version = "0.2.1"
 version = "0.0.2"
 #path = "C:\\Users\\Dell\\CLionProjects\\jupyter-protocol\\projects\\jupyter-derive"
 
-[dependencies.valkyrie-interpreter]
-version = "0.0.*"
-path = "../valkyrie-interpreter"
+[dependencies.cas3]
+version = "0.1.*"
+path = "../cas3-core"
 
 [dev-dependencies]
 tokio = "1.32.0"

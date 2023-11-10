@@ -2,8 +2,8 @@
 resolver = "2"
 members = ["projects/*"]
 default-members = [
-    "projects/valkyrie-interpreter",
-    "projects/valkyrie-jupyter",
+    "projects/cas3-core",
+    "projects/cas3-jupyter",
 ]
 exclude = [
     "projects/playground",

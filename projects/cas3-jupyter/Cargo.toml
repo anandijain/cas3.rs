@@ -1,0 +1,42 @@
+[package]
+name = "cas3-jupyter"
+version = "0.0.0"
+authors = ["Aster <192607617@qq.com>"]
+description = "Jupyter Kernel for Valkyrie Language"
+repository = "https://github.com/nyar-vm/valkyrie-jupyter"
+documentation = "https://docs.rs/jupyter-valkyrie"
+readme = "readme.md"
+license = "MPL-2.0"
+edition = "2021"
+exclude = ["package.json", "tests/**"]
+
+[[bin]]
+name = "jupyter-valkyrie"
+path = "src/main.rs"
+
+[dependencies]
+url = "2.4.1"
+async-trait = "0.1.73"
+tracing-subscriber = "0.3.17"
+clap = { version = "4.4.2", features = ["derive"] }
+
+[dependencies.jupyter]
+version = "0.2.1"
+#path = 'C:\Users\Dell\CLionProjects\jupyter-protocol\projects\jupyter'
+
+[dependencies.jupyter-derive]
+version = "0.0.2"
+#path = "C:\\Users\\Dell\\CLionProjects\\jupyter-protocol\\projects\\jupyter-derive"
+
+[dependencies.valkyrie-interpreter]
+version = "0.0.*"
+path = "../valkyrie-interpreter"
+
+[dev-dependencies]
+tokio = "1.32.0"
+
+[features]
+default = []
+
+[package.metadata.docs.rs]
+all-features = true

@@ -1,2 +1,6 @@
-/target
+## IDE
+.idea/
+
+## Rust
+target/
 history.txt

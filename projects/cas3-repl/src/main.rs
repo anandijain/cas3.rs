@@ -4,7 +4,7 @@ use rustyline::config::Configurer;
 use rustyline::Editor;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::MatchingBracketValidator;
-use cas3::{Context2, ReplHelper, run_file, startup_attrs};
+use cas3::{Context2, ReplHelper, run, run_file, startup_attrs};
 
 fn main() -> rustyline::Result<()> {
     let h = ReplHelper {

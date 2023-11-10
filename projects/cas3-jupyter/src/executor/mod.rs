@@ -1,20 +1,20 @@
-use crate::{config::ValkyrieConfig, DisplayKeywords, DisplayNumber};
+use crate::{config::Cas3Config};
 use jupyter::{to_value, value_type::HtmlText, ExecutionRequest, JupyterError, JupyterKernelSockets, JupyterMessage};
-use valkyrie_interpreter::{ValkyrieError, ValkyrieVM, ValkyrieValue};
+use cas3_core::Cas3VM;
 
-pub struct ValkyrieExecutor {
-    pub(crate) vm: ValkyrieVM,
+pub struct CasExecutor {
+    pub(crate) vm: Cas3VM,
     pub(crate) sockets: JupyterKernelSockets,
-    pub(crate) config: ValkyrieConfig,
+    pub(crate) config: Cas3Config,
 }
 
-impl Default for ValkyrieExecutor {
+impl Default for CasExecutor {
     fn default() -> Self {
-        ValkyrieExecutor { vm: ValkyrieVM::default(), sockets: Default::default(), config: ValkyrieConfig::default() }
+        CasExecutor { vm: Cas3VM::default(), sockets: Default::default(), config: Cas3Config::default() }
     }
 }
 
-impl ValkyrieExecutor {
+impl CasExecutor {
     pub(crate) async fn repl_parse_and_run(&mut self, code: &ExecutionRequest) -> Result<(), ValkyrieError> {
         let file = self.vm.load_snippet(&code.code, &format!("Cell{}", code.execution_count));
         for task in self.vm.execute_script(file).await {

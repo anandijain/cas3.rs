@@ -1,10 +1,10 @@
-pub struct ValkyrieConfig {
+pub struct Cas3Config {
     pub running_time: bool,
     pub image_max_pixel: usize,
 }
 
-impl Default for ValkyrieConfig {
+impl Default for Cas3Config {
     fn default() -> Self {
-        ValkyrieConfig { running_time: false, image_max_pixel: 1024 * 768 }
+        Cas3Config { running_time: false, image_max_pixel: 1024 * 768 }
     }
 }

@@ -1,4 +1,4 @@
-use crate::executor::ValkyrieExecutor;
+use crate::executor::CasExecutor;
 use jupyter::{
     value_type::{JupyterContext, JupyterTheme},
     Executed, ExecutionReply, ExecutionRequest, JupyterConnection, JupyterError, JupyterKernelProtocol, LanguageInfo, Value,
@@ -7,7 +7,7 @@ use jupyter_derive::include_png32;
 
 pub mod display;
 
-impl JupyterKernelProtocol for ValkyrieExecutor {
+impl JupyterKernelProtocol for CasExecutor {
     fn language_info(&self) -> LanguageInfo {
         let mut info =
             LanguageInfo::new("valkyrie", "Valkyrie").with_syntax("scala", "scala").with_version(env!("CARGO_PKG_VERSION"));

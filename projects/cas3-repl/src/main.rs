@@ -4,7 +4,7 @@ use rustyline::config::Configurer;
 use rustyline::Editor;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::MatchingBracketValidator;
-use cas3::{Context2, ReplHelper, run, run_file, startup_attrs};
+use cas3_core::{Cas3VM, ReplHelper, run, startup_attrs};
 
 fn main() -> rustyline::Result<()> {
     let h = ReplHelper {
@@ -19,14 +19,12 @@ fn main() -> rustyline::Result<()> {
     if rl.load_history("history.txt").is_err() {
         println!("No previous history.");
     }
-    let mut ctx = Context2 {
-        vars: HashMap::new(),
-    };
+    let mut ctx = Cas3VM::default();
 
     startup_attrs(&mut ctx);
-    run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/calculus.sexp"))?;
+    ctx.run_file("lang/attrs.sexp")?;
+    ctx.run_file("lang/startup.sexp")?;
+    ctx.run_file("lang/calculus.sexp")?;
     // run_file(&mut ctx, Path::new("lang/systems.sexp"))?;
 
     run(rl, ctx)?;

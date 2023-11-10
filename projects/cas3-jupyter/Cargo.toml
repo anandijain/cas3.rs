@@ -28,7 +28,7 @@ version = "0.2.1"
 version = "0.0.2"
 #path = "C:\\Users\\Dell\\CLionProjects\\jupyter-protocol\\projects\\jupyter-derive"
 
-[dependencies.cas3]
+[dependencies.cas3-core]
 version = "0.1.*"
 path = "../cas3-core"
 

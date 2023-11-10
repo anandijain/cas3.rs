@@ -189,6 +189,18 @@ checksum = "a2bd12c1caf447e69cd4528f47f94d203fd2582878ecb9e9465484c4148a8223"
 name = "cas3"
 version = "0.1.0"
 dependencies = [
+ "cas3-core",
+ "num-bigint",
+ "num-traits",
+ "ordered-float",
+ "peg",
+ "rustyline",
+]
+
+[[package]]
+name = "cas3-core"
+version = "0.1.0"
+dependencies = [
  "num-bigint",
  "num-traits",
  "ordered-float",
@@ -201,7 +213,7 @@ name = "cas3-jupyter"
 version = "0.0.0"
 dependencies = [
  "async-trait",
- "cas3",
+ "cas3-core",
  "clap",
  "jupyter",
  "jupyter-derive",

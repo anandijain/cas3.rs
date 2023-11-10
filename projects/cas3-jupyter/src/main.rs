@@ -8,7 +8,7 @@ use std::fmt::{Debug, Formatter};
 
 use std::path::PathBuf;
 
-use crate::executor::ValkyrieExecutor;
+use crate::executor::CasExecutor;
 use clap::{Parser, Subcommand};
 use jupyter::{InstallAction, JupyterResult, OpenAction, StartAction, UninstallAction};
 use std::io::Write;
@@ -52,7 +52,7 @@ impl Debug for JupyterCommands {
 impl JupyterApplication {
     /// Run the application
     pub fn run(&self) -> JupyterResult<()> {
-        let config = ValkyrieExecutor::default();
+        let config = CasExecutor::default();
         match &self.command {
             JupyterCommands::Open(v) => v.run(),
             JupyterCommands::Start(v) => v.run(config),

@@ -1,5 +1,6 @@
 // extern crate cairo;
 extern crate peg;
+
 use std::{
     borrow::Cow::{self, Borrowed, Owned},
     ops::{Add, Mul},
@@ -152,9 +153,9 @@ pub fn is_atom(expr: &Expr) -> bool {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Context2 {
-   pub vars: HashMap<Expr, TableEntry>,
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct Cas3VM {
+    vars: HashMap<Expr, TableEntry>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -174,7 +175,7 @@ impl TableEntry {
     }
 }
 
-pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
+pub fn get_ownvalue(ctx: &Cas3VM, sym: Expr) -> Option<Expr> {
     // println!("ctx: {:?}. sym: {}", ctx, sym);
     let te = ctx.vars.get(&sym);
     if let Some(te) = te {
@@ -264,7 +265,7 @@ fn unpack_mat(ex: Expr) -> Option<Vec<Vec<(f64, f64, f64)>>> {
 // nh can be List too
 pub fn internal_functions_apply(
     stack: &mut Expr,
-    ctx: &mut Context2,
+    ctx: &mut Cas3VM,
     nh: Expr,
     evaluated_args: Vec<Expr>,
 ) -> Expr {
@@ -286,7 +287,7 @@ pub fn internal_functions_apply(
                 evaluated_args[1].clone(),
                 &vec![],
                 &mut HashMap::new(),
-                &mut HashMap::new()
+                &mut HashMap::new(),
             )
         ));
     } else if nh == sym("sameq") {
@@ -526,7 +527,7 @@ pub fn internal_functions_apply(
         return length(&evaluated_args[0]);
     } else if nh == sym("Get") {
         if let Expr::Str(p) = &evaluated_args[0] {
-            let res = run_file(ctx, Path::new(&p));
+            let res = ctx.run_file(p);
             if let Ok(res) = res {
                 return res;
             } else {
@@ -677,10 +678,10 @@ pub fn internal_functions_apply(
         }
 
         let range_lists = &evaluated_args[1..]; //.clone().reverse();
-                                                // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
-                                                // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
-                                                // let mut ex = Expr::List(vec![sym("Table")]);
-                                                // ex.push(table_body.clone());
+        // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
+        // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
+        // let mut ex = Expr::List(vec![sym("Table")]);
+        // ex.push(table_body.clone());
 
         let mut nested_table = table_body.clone();
         for range in range_lists.iter().rev() {
@@ -753,7 +754,7 @@ pub fn internal_functions_apply(
     }
 }
 
-pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
+pub fn evaluate(stack: &mut Expr, ctx: &mut Cas3VM, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
     let mut last_ex = None;
 
@@ -1450,7 +1451,7 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
     current_expr
 }
 
-pub fn startup_attrs(ctx: &mut Context2) {
+pub fn startup_attrs(ctx: &mut Cas3VM) {
     let attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
     let mut exs = vec![
         format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
@@ -1459,15 +1460,15 @@ pub fn startup_attrs(ctx: &mut Context2) {
         format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst SequenceHold))"),
         format!("(rule_delayed (hold_pattern (attrs down_values)) (list HoldAll))"),
     ]
-    .iter_mut()
-    .map(|s| expr_parser::Expr(&s).unwrap())
-    .collect();
+        .iter_mut()
+        .map(|s| expr_parser::Expr(&s).unwrap())
+        .collect();
     attrs_te.down.append(&mut exs);
 }
 
 #[derive(Helper, Completer, Hinter, Validator)]
 pub struct ReplHelper {
-   pub highlighter: MatchingBracketHighlighter,
+    pub highlighter: MatchingBracketHighlighter,
     #[rustyline(Validator)]
     pub validator: MatchingBracketValidator,
     pub colored_prompt: String,
@@ -1499,41 +1500,45 @@ impl Highlighter for ReplHelper {
     }
 }
 
-pub fn run_file(ctx: &mut Context2, filepath: &Path) -> Result<Expr> {
-    // let file = File::open(filepath)?;
-    // let reader = BufReader::new(file);
-    let file_contents = std::fs::read_to_string(filepath)?;
-    // i dont love this because it's ambigious whether or not something failed in reading the file or sth
-    // or if the last expr in the file was a setd or something that returns a Null
-    println!("Running file: {}", filepath.display());
-    let mut res = sym("Null");
-    let exprs = expr_parser::expressions(&file_contents).unwrap();
-    // for line in reader.lines() {
-    for expr in exprs {
-        // match line {
-        // Ok(content) => {
-        //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
-        //         continue;
-        //     }
-        // if let Ok(ex) = &expr_parser::Expr(&content) {
-        let mut stack = Expr::List(vec![]);
-        res = evaluate(&mut stack, ctx, &expr);
-        // } else {
-        // eprintln!("Error parsing a line: {:?}", content);
+impl Cas3VM {
+    pub fn run_file<P: AsRef<Path>>(&mut self, filepath: P) -> Result<Expr> {
+        let filepath = filepath.as_ref();
+        // let file = File::open(filepath)?;
+        // let reader = BufReader::new(file);
+        let file_contents = std::fs::read_to_string(filepath)?;
+        // i dont love this because it's ambigious whether or not something failed in reading the file or sth
+        // or if the last expr in the file was a setd or something that returns a Null
+        println!("Running file: {}", filepath.display());
+        let mut res = sym("Null");
+        let exprs = expr_parser::expressions(&file_contents).unwrap();
+        // for line in reader.lines() {
+        for expr in exprs {
+            // match line {
+            // Ok(content) => {
+            //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
+            //         continue;
+            //     }
+            // if let Ok(ex) = &expr_parser::Expr(&content) {
+            let mut stack = Expr::List(vec![]);
+            res = evaluate(&mut stack, self, &expr);
+            // } else {
+            // eprintln!("Error parsing a line: {:?}", content);
+            // }
+        }
+        // Err(error) => {
+        // eprintln!("Error reading a line: {:?}", error);
         // }
-    }
-    // Err(error) => {
-    // eprintln!("Error reading a line: {:?}", error);
-    // }
-    // }
-    // }
+        // }
+        // }
 
-    Ok(res)
+        Ok(res)
+    }
 }
+
 
 pub fn run(
     mut rl: rustyline::Editor<ReplHelper, rustyline::history::FileHistory>,
-    mut ctx: Context2,
+    mut ctx: Cas3VM,
 ) -> Result<()> {
     let mut i = 1;
 
@@ -1545,7 +1550,7 @@ pub fn run(
         match line {
             Ok(l) => {
                 rl.add_history_entry(l.as_str()).unwrap(); // history
-                                                           // saving every line (even if slow, just until its more stable)
+                // saving every line (even if slow, just until its more stable)
                 rl.save_history("history.txt").unwrap();
 
                 let exs = expr_parser::expressions(&l);
@@ -1587,38 +1592,11 @@ pub fn run(
     Ok(())
 }
 
-fn main() -> Result<()> {
-    let h = ReplHelper {
-        highlighter: MatchingBracketHighlighter::new(),
-        colored_prompt: "".to_owned(),
-        validator: MatchingBracketValidator::new(),
-    };
-    let config = rustyline::Config::default();
-    let mut rl = Editor::with_config(config)?;
-    rl.set_max_history_size(10000).unwrap();
-    rl.set_helper(Some(h));
-    if rl.load_history("history.txt").is_err() {
-        println!("No previous history.");
-    }
-    let mut ctx = Context2 {
-        vars: HashMap::new(),
-    };
-
-    startup_attrs(&mut ctx);
-    run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/calculus.sexp"))?;
-    // run_file(&mut ctx, Path::new("lang/systems.sexp"))?;
-
-    run(rl, ctx)?;
-    Ok(())
-}
-
 pub fn evalparse(s: &str) -> Expr {
     let ex = expr_parser::Expr(s);
     match ex {
         Ok(expr) => {
-            let mut ctx = Context2 {
+            let mut ctx = Cas3VM {
                 vars: HashMap::new(),
             };
             let mut stack = Expr::List(vec![]);
@@ -1628,7 +1606,7 @@ pub fn evalparse(s: &str) -> Expr {
     }
 }
 
-pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
+pub fn ctx_evalparse(ctx: &mut Cas3VM, s: &str) -> Expr {
     let ex = expr_parser::Expr(s);
     match ex {
         Ok(expr) => {
@@ -1810,10 +1788,10 @@ mod tests {
             sym("true")
         );
 
-        let mut ctx = Context2 {
+        let mut ctx = Cas3VM {
             vars: HashMap::new(),
         };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/attrs.sexp")).unwrap();
         ctx_evalparse(
             &mut ctx,
             "(setd (listq (pattern x (blank))) (sameq list (head x)))",
@@ -1821,7 +1799,7 @@ mod tests {
         println!("listq ctx {:?}", ctx);
         assert_eq!(ctx_evalparse(&mut ctx, "(listq (list a b c))"), sym("true"));
 
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/startup.sexp")).unwrap();
         // issue #2
         assert_eq!(
             ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
@@ -1961,12 +1939,13 @@ mod tests {
             sym("true")
         )
     }
+
     #[test]
     fn table_tests() {
-        let mut ctx = Context2 {
+        let mut ctx = Cas3VM {
             vars: HashMap::new(),
         };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/attrs.sexp")).unwrap();
         ctx_evalparse(&mut ctx, "(set xs (List 1 2 3 4 5))");
 
         let cases = vec![
@@ -1992,11 +1971,11 @@ mod tests {
 
     #[test]
     fn issue_2() {
-        let mut ctx = Context2 {
+        let mut ctx = Cas3VM {
             vars: HashMap::new(),
         };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/attrs.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/startup.sexp")).unwrap();
         assert_eq!(
             ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
             sym("true")
@@ -2005,11 +1984,11 @@ mod tests {
 
     #[test]
     fn alternatives_test() {
-        let mut ctx = Context2 {
+        let mut ctx = Cas3VM {
             vars: HashMap::new(),
         };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/attrs.sexp")).unwrap();
+        ctx.run_file( Path::new("lang/startup.sexp")).unwrap();
         let cases = vec![
             ("(matchq a (Alternatives a b))", sym("true")),
             ("(matchq (f a) (f (Alternatives a b)))", sym("true")),

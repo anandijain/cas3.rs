@@ -205,7 +205,6 @@ dependencies = [
  "num-traits",
  "ordered-float",
  "peg",
- "rustyline",
 ]
 
 [[package]]

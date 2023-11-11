@@ -11,4 +11,3 @@ num-bigint = "0.4.4"
 num-traits = "0.2.17"
 ordered-float = "4.1.0"
 peg = "0.8.1"
-rustyline = { version = "12.0.0", features = ["derive", "custom-bindings"] }

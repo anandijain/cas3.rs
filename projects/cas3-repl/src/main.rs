@@ -1,10 +1,10 @@
-use std::collections::HashMap;
 use std::path::Path;
 use rustyline::config::Configurer;
 use rustyline::Editor;
 use rustyline::highlight::MatchingBracketHighlighter;
 use rustyline::validate::MatchingBracketValidator;
-use cas3_core::{Cas3VM, ReplHelper, run, startup_attrs};
+use cas3::{ReplHelper, run};
+use cas3_core::{Cas3VM, startup_attrs};
 
 fn main() -> rustyline::Result<()> {
     let h = ReplHelper {
@@ -21,10 +21,11 @@ fn main() -> rustyline::Result<()> {
     }
     let mut ctx = Cas3VM::default();
 
+    let here = Path::new(env!("CARGO_MANIFEST_DIR"));
     startup_attrs(&mut ctx);
-    ctx.run_file("lang/attrs.sexp")?;
-    ctx.run_file("lang/startup.sexp")?;
-    ctx.run_file("lang/calculus.sexp")?;
+    ctx.run_file(here.join("lang/attrs.sexp"))?;
+    ctx.run_file(here.join("lang/startup.sexp"))?;
+    ctx.run_file(here.join("lang/calculus.sexp"))?;
     // run_file(&mut ctx, Path::new("lang/systems.sexp"))?;
 
     run(rl, ctx)?;

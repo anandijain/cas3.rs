@@ -1,6 +1,8 @@
 // extern crate cairo;
 extern crate peg;
 
+
+pub use crate::errors::{Cas3Error, Cas3ErrorKind, Result};
 use std::{
     ops::{Add, Mul},
 };
@@ -50,10 +52,6 @@ peg::parser! {
         pub rule expressions() -> Vec<Expr>
             = whitespace() e:Expr() ** whitespace() { e }
     }
-}
-
-fn parse(s: &str) -> Expr {
-    expr_parser::Expr(s).unwrap()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -1461,7 +1459,7 @@ pub fn startup_attrs(ctx: &mut Cas3VM) {
 }
 
 impl Cas3VM {
-    pub fn run_file<P: AsRef<Path>>(&mut self, filepath: P) -> std::io::Result<Expr> {
+    pub fn run_file<P: AsRef<Path>>(&mut self, filepath: P) -> Result<Expr> {
         let filepath = filepath.as_ref();
         // let file = File::open(filepath)?;
         // let reader = BufReader::new(file);
@@ -1469,8 +1467,12 @@ impl Cas3VM {
         // i dont love this because it's ambigious whether or not something failed in reading the file or sth
         // or if the last expr in the file was a setd or something that returns a Null
         println!("Running file: {}", filepath.display());
+        self.run_script(file_contents)
+    }
+
+    pub fn run_script<S: AsRef<str>>(&mut self, file_contents: S) -> Result<Expr> {
         let mut res = sym("Null");
-        let exprs = expr_parser::expressions(&file_contents).unwrap();
+        let exprs = expr_parser::expressions(file_contents.as_ref()).unwrap();
         // for line in reader.lines() {
         for expr in exprs {
             // match line {
@@ -1494,8 +1496,6 @@ impl Cas3VM {
         Ok(res)
     }
 }
-
-
 
 
 pub fn evalparse(s: &str) -> Expr {

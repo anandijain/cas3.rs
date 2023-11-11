@@ -2,7 +2,7 @@
 name = "cas3-jupyter"
 version = "0.0.0"
 authors = ["Aster <192607617@qq.com>"]
-description = "Jupyter Kernel for Valkyrie Language"
+description = "Jupyter Kernel for cas3"
 repository = "https://github.com/nyar-vm/valkyrie-jupyter"
 documentation = "https://docs.rs/jupyter-valkyrie"
 readme = "readme.md"

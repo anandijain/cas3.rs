@@ -1,7 +1,7 @@
 use crate::executor::CasExecutor;
 use jupyter::{
-    value_type::{JupyterContext, JupyterTheme},
-    Executed, ExecutionReply, ExecutionRequest, JupyterConnection, JupyterError, JupyterKernelProtocol, LanguageInfo, Value,
+
+     ExecutionReply, ExecutionRequest, JupyterConnection, JupyterError, JupyterKernelProtocol, LanguageInfo,
 };
 use jupyter_derive::include_png32;
 
@@ -10,7 +10,7 @@ pub mod display;
 impl JupyterKernelProtocol for CasExecutor {
     fn language_info(&self) -> LanguageInfo {
         let mut info =
-            LanguageInfo::new("valkyrie", "Valkyrie").with_syntax("scala", "scala").with_version(env!("CARGO_PKG_VERSION"));
+            LanguageInfo::new("cas3", "Cas3").with_syntax("schema", "schema").with_version(env!("CARGO_PKG_VERSION"));
         info.png_32 = include_png32!();
         info.png_64 = include_png32!();
         return info;

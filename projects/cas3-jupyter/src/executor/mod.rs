@@ -1,7 +1,7 @@
 use crate::{config::Cas3Config};
-use jupyter::{to_value, value_type::HtmlText, ExecutionRequest, JupyterError, JupyterKernelSockets, JupyterMessage};
+use jupyter::{ ExecutionRequest,  JupyterKernelSockets, JupyterMessage};
 use cas3_core::{Cas3VM, Expr};
-
+use cas3_core::Result;
 pub struct CasExecutor {
     pub(crate) vm: Cas3VM,
     pub(crate) sockets: JupyterKernelSockets,
@@ -15,14 +15,16 @@ impl Default for CasExecutor {
 }
 
 impl CasExecutor {
-    pub(crate) async fn repl_parse_and_run(&mut self, code: &ExecutionRequest) -> Result<(), ValkyrieError> {
-        let file = self.vm.load_snippet(&code.code, &format!("Cell{}", code.execution_count));
-        for task in self.vm.execute_script(file).await {
-            match task {
-                Ok(v) => self.send_value(v, &code.header).await,
-                Err(e) => self.sockets.send_executed(JupyterError::custom(format!("Error: {}", e)), &code.header).await,
-            }
-        }
+    pub(crate) async fn repl_parse_and_run(&mut self, code: &ExecutionRequest) -> Result<()> {
+        // &format!("Cell{}", code.execution_count)
+        let file = self.vm.run_script(&code.code)?;
+        self.send_value(file, &code.header).await;
+        // for task in self.vm.execute_script(file).await {
+        //     match task {
+        //         Ok(v) => self.send_value(v, &code.header).await,
+        //         Err(e) => self.sockets.send_executed(JupyterError::custom(format!("Error: {}", e)), &code.header).await,
+        //     }
+        // }
         Ok(())
     }
 
@@ -34,7 +36,7 @@ impl CasExecutor {
             Expr::Real(v) => { self.sockets.send_executed(v.to_string(), parent).await }
             Expr::Sym(v) => { self.sockets.send_executed(v.to_string(), parent).await }
             Expr::Str(v) => { self.sockets.send_executed(v.to_string(), parent).await }
-            Expr::List(v) => { self.sockets.send_executed(v.to_string(), parent).await }
+            Expr::List(v) => { self.sockets.send_executed(format!("{v:#?}"), parent).await }
         }
     }
 }

@@ -1,5 +1,9 @@
 use super::*;
 
+fn parse(s: &str) -> Expr {
+    expr_parser::Expr(s).unwrap()
+}
+
 #[test]
 fn test_parser() {
     assert_eq!(parse("(f (* *hi* *)  x)"), parse("(f x)"));

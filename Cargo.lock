@@ -208,20 +208,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cas3-jupyter"
-version = "0.0.0"
-dependencies = [
- "async-trait",
- "cas3-core",
- "clap",
- "jupyter",
- "jupyter-derive",
- "tokio",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
 name = "cc"
 version = "1.0.83"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -799,6 +785,20 @@ dependencies = [
  "unicode-segmentation",
  "uuid",
  "zeromq",
+]
+
+[[package]]
+name = "jupyter-cas3"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "cas3-core",
+ "clap",
+ "jupyter",
+ "jupyter-derive",
+ "tokio",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

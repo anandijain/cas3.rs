@@ -3,4 +3,9 @@
 
 ## Rust
 target/
+
+
+## Cache
+.ipynb_checkpoints/
+.virtual_documents/
 history.txt

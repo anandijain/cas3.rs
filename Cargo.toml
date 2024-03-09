@@ -1,14 +1,16 @@
-[package]
-name = "cas3"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+resolver = "2"
+members = ["projects/*"]
+default-members = [
+    "projects/cas3-core",
+    "projects/cas3-jupyter",
+]
+exclude = [
+    "projects/playground",
+    "projects/.DS_Store",
+]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[profile.release]
+lto = true
+panic = "abort"
 
-[dependencies]
-cairo-rs = { version = "0.18.2", features = ["svg"] }
-num-bigint = "0.4.4"
-num-traits = "0.2.17"
-ordered-float = "4.1.0"
-peg = "0.8.1"
-rustyline = { version = "12.0.0", features = ["derive", "custom-bindings"] }

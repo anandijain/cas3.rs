@@ -1,2 +1,12 @@
-/target
+## IDE
+.idea/
+
+## Rust
+target/
+
+
+## Cache
+.ipynb_checkpoints/
+.virtual_documents/
+Untitled.ipynb
 history.txt

@@ -1,5 +1,9 @@
 # cas3.rs
 
+## devlog 
+If you would like to see the entire livestreams of me developing this language visit:
+https://youtube.com/playlist?list=PL79kqjVnD2EOBvsTiCQqX0ZAwx9AKiA_w&si=V1xus8Q8reJ_7RS-
+
 ## Running cas3:
 To run cas3.rs, make sure rust is installed, and run `cargo run --release` in the root directory.
 

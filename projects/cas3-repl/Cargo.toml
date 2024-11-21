@@ -1,0 +1,18 @@
+[package]
+name = "cas3"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+#cairo-rs = { version = "0.18.2", features = ["svg"] }
+num-bigint = "0.4.4"
+num-traits = "0.2.17"
+ordered-float = "4.1.0"
+peg = "0.8.1"
+rustyline = { version = "12.0.0", features = ["derive", "custom-bindings"] }
+
+[dependencies.cas3-core]
+version = "0.1.*"
+path = "../cas3-core"

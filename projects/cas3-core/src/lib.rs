@@ -1,31 +1,28 @@
-extern crate cairo;
+// extern crate cairo;
 extern crate peg;
+
+
+pub use crate::errors::{Cas3Error, Cas3ErrorKind, Result};
 use std::{
-    borrow::Cow::{self, Borrowed, Owned},
     ops::{Add, Mul},
 };
+use std::{fmt, path::Path};
+use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
+use std::time::Instant;
 
-use ordered_float::{self, NotNan};
 // use rug::Integer;
 // use num_bigint::BigInt;
 use num_traits::cast::ToPrimitive;
+use ordered_float::{self, NotNan};
+// use cairo::{Context, SvgSurface};
 
-use cairo::{Context, SvgSurface};
-use rustyline::{
-    config::Configurer,
-    error::ReadlineError,
-    highlight::{Highlighter, MatchingBracketHighlighter},
-    validate::MatchingBracketValidator,
-    Completer, Editor, Helper, Hinter, Result, Validator,
-};
-
-use std::collections::HashMap;
-use std::ops::{Deref, DerefMut};
-use std::time::{Duration, Instant};
-use std::{fmt, path::Path};
+#[cfg(test)]
+mod tests;
+mod errors;
 
 peg::parser! {
-    grammar expr_parser() for str {
+    pub grammar expr_parser() for str {
         rule comment()
             = "(*" (!"*)" [_])* "*)"
 
@@ -55,10 +52,6 @@ peg::parser! {
         pub rule expressions() -> Vec<Expr>
             = whitespace() e:Expr() ** whitespace() { e }
     }
-}
-
-fn parse(s: &str) -> Expr {
-    expr_parser::Expr(s).unwrap()
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -152,8 +145,8 @@ pub fn is_atom(expr: &Expr) -> bool {
     }
 }
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub struct Context2 {
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct Cas3VM {
     vars: HashMap<Expr, TableEntry>,
 }
 
@@ -174,7 +167,7 @@ impl TableEntry {
     }
 }
 
-pub fn get_ownvalue(ctx: &Context2, sym: Expr) -> Option<Expr> {
+pub fn get_ownvalue(ctx: &Cas3VM, sym: Expr) -> Option<Expr> {
     // println!("ctx: {:?}. sym: {}", ctx, sym);
     let te = ctx.vars.get(&sym);
     if let Some(te) = te {
@@ -227,35 +220,35 @@ fn unpack_mat(ex: Expr) -> Option<Vec<Vec<(f64, f64, f64)>>> {
     }
 }
 
-fn create_svg_from_colors(colors: Vec<Vec<(f64, f64, f64)>>, filename: &str, scale_factor: i32) {
-    let rows = colors.len();
-    let cols = colors[0].len(); // Assuming all rows have the same length
-
-    let width = cols as i32 * scale_factor;
-    let height = rows as i32 * scale_factor;
-
-    // Create SvgSurface
-    let surface = SvgSurface::new(width as f64, height as f64, Some(filename))
-        .expect("Couldn't create SVG surface");
-
-    // Create Context for drawing
-    let cr = Context::new(&surface).expect("Couldn't create Cairo context");
-
-    // Scale the coordinate system
-    cr.scale(scale_factor as f64, scale_factor as f64);
-
-    // Loop through each cell to draw rectangles with specified colors
-    for (i, row) in colors.iter().enumerate() {
-        for (j, &(r, g, b)) in row.iter().enumerate() {
-            cr.rectangle(j as f64, i as f64, 1.0, 1.0);
-            cr.set_source_rgb(r, g, b);
-            cr.fill().expect("Failed to fill rectangle");
-        }
-    }
-
-    // Finish drawing
-    cr.show_page().expect("Failed to save SVG");
-}
+// fn create_svg_from_colors(colors: Vec<Vec<(f64, f64, f64)>>, filename: &str, scale_factor: i32) {
+//     let rows = colors.len();
+//     let cols = colors[0].len(); // Assuming all rows have the same length
+//
+//     let width = cols as i32 * scale_factor;
+//     let height = rows as i32 * scale_factor;
+//
+//     // Create SvgSurface
+//     let surface = SvgSurface::new(width as f64, height as f64, Some(filename))
+//         .expect("Couldn't create SVG surface");
+//
+//     // Create Context for drawing
+//     let cr = Context::new(&surface).expect("Couldn't create Cairo context");
+//
+//     // Scale the coordinate system
+//     cr.scale(scale_factor as f64, scale_factor as f64);
+//
+//     // Loop through each cell to draw rectangles with specified colors
+//     for (i, row) in colors.iter().enumerate() {
+//         for (j, &(r, g, b)) in row.iter().enumerate() {
+//             cr.rectangle(j as f64, i as f64, 1.0, 1.0);
+//             cr.set_source_rgb(r, g, b);
+//             cr.fill().expect("Failed to fill rectangle");
+//         }
+//     }
+//
+//     // Finish drawing
+//     cr.show_page().expect("Failed to save SVG");
+// }
 
 // fn export()
 
@@ -264,7 +257,7 @@ fn create_svg_from_colors(colors: Vec<Vec<(f64, f64, f64)>>, filename: &str, sca
 // nh can be List too
 pub fn internal_functions_apply(
     stack: &mut Expr,
-    ctx: &mut Context2,
+    ctx: &mut Cas3VM,
     nh: Expr,
     evaluated_args: Vec<Expr>,
 ) -> Expr {
@@ -286,7 +279,7 @@ pub fn internal_functions_apply(
                 evaluated_args[1].clone(),
                 &vec![],
                 &mut HashMap::new(),
-                &mut HashMap::new()
+                &mut HashMap::new(),
             )
         ));
     } else if nh == sym("sameq") {
@@ -526,7 +519,7 @@ pub fn internal_functions_apply(
         return length(&evaluated_args[0]);
     } else if nh == sym("Get") {
         if let Expr::Str(p) = &evaluated_args[0] {
-            let res = run_file(ctx, Path::new(&p));
+            let res = ctx.run_file(p);
             if let Ok(res) = res {
                 return res;
             } else {
@@ -677,10 +670,10 @@ pub fn internal_functions_apply(
         }
 
         let range_lists = &evaluated_args[1..]; //.clone().reverse();
-                                                // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
-                                                // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
-                                                // let mut ex = Expr::List(vec![sym("Table")]);
-                                                // ex.push(table_body.clone());
+        // Table[ f[i,j], {i, imin, imax}, {j, jmin, jmax}]
+        // Table[Table[f[i,j], {j, jmin, jmax}], {i, imin, imax}]
+        // let mut ex = Expr::List(vec![sym("Table")]);
+        // ex.push(table_body.clone());
 
         let mut nested_table = table_body.clone();
         for range in range_lists.iter().rev() {
@@ -742,7 +735,7 @@ pub fn internal_functions_apply(
                 return sym("$Failed");
             }
         };
-        create_svg_from_colors(m, filename, 50);
+        // create_svg_from_colors(m, filename, 50);
         return sym("Null");
     } else {
         return Expr::List(
@@ -753,7 +746,7 @@ pub fn internal_functions_apply(
     }
 }
 
-pub fn evaluate(stack: &mut Expr, ctx: &mut Context2, expr: &Expr) -> Expr {
+pub fn evaluate(stack: &mut Expr, ctx: &mut Cas3VM, expr: &Expr) -> Expr {
     let mut ex = expr.clone();
     let mut last_ex = None;
 
@@ -1450,7 +1443,7 @@ pub fn replace_repeated(expr: &Expr, rules: &Expr) -> Expr {
     current_expr
 }
 
-pub fn startup_attrs(ctx: &mut Context2) {
+pub fn startup_attrs(ctx: &mut Cas3VM) {
     let attrs_te = ctx.vars.entry(sym("attrs")).or_insert_with(TableEntry::new);
     let mut exs = vec![
         format!("(rule_delayed (hold_pattern (attrs hold_pattern)) (list HoldAll))"),
@@ -1459,166 +1452,57 @@ pub fn startup_attrs(ctx: &mut Context2) {
         format!("(rule_delayed (hold_pattern (attrs set)) (list HoldFirst SequenceHold))"),
         format!("(rule_delayed (hold_pattern (attrs down_values)) (list HoldAll))"),
     ]
-    .iter_mut()
-    .map(|s| expr_parser::Expr(&s).unwrap())
-    .collect();
+        .iter_mut()
+        .map(|s| expr_parser::Expr(&s).unwrap())
+        .collect();
     attrs_te.down.append(&mut exs);
 }
 
-#[derive(Helper, Completer, Hinter, Validator)]
-pub struct ReplHelper {
-    highlighter: MatchingBracketHighlighter,
-    #[rustyline(Validator)]
-    validator: MatchingBracketValidator,
-    colored_prompt: String,
-}
+impl Cas3VM {
+    pub fn run_file<P: AsRef<Path>>(&mut self, filepath: P) -> Result<Expr> {
+        let filepath = filepath.as_ref();
+        // let file = File::open(filepath)?;
+        // let reader = BufReader::new(file);
+        let file_contents = std::fs::read_to_string(filepath)?;
+        // i dont love this because it's ambigious whether or not something failed in reading the file or sth
+        // or if the last expr in the file was a setd or something that returns a Null
+        println!("Running file: {}", filepath.display());
+        self.run_script(file_contents)
+    }
 
-impl Highlighter for ReplHelper {
-    fn highlight_prompt<'b, 's: 'b, 'p: 'b>(
-        &'s self,
-        prompt: &'p str,
-        default: bool,
-    ) -> Cow<'b, str> {
-        if default {
-            Borrowed(&self.colored_prompt)
-        } else {
-            Borrowed(prompt)
+    pub fn run_script<S: AsRef<str>>(&mut self, file_contents: S) -> Result<Expr> {
+        let mut res = sym("Null");
+        let exprs = expr_parser::expressions(file_contents.as_ref()).unwrap();
+        // for line in reader.lines() {
+        for expr in exprs {
+            // match line {
+            // Ok(content) => {
+            //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
+            //         continue;
+            //     }
+            // if let Ok(ex) = &expr_parser::Expr(&content) {
+            let mut stack = Expr::List(vec![]);
+            res = evaluate(&mut stack, self, &expr);
+            // } else {
+            // eprintln!("Error parsing a line: {:?}", content);
+            // }
         }
-    }
-
-    fn highlight_hint<'h>(&self, hint: &'h str) -> Cow<'h, str> {
-        Owned("\x1b[1m".to_owned() + hint + "\x1b[m")
-    }
-
-    fn highlight<'l>(&self, line: &'l str, pos: usize) -> Cow<'l, str> {
-        self.highlighter.highlight(line, pos)
-    }
-
-    fn highlight_char(&self, line: &str, pos: usize) -> bool {
-        self.highlighter.highlight_char(line, pos)
-    }
-}
-
-pub fn run_file(ctx: &mut Context2, filepath: &Path) -> Result<Expr> {
-    // let file = File::open(filepath)?;
-    // let reader = BufReader::new(file);
-    let file_contents = std::fs::read_to_string(filepath)?;
-    // i dont love this because it's ambigious whether or not something failed in reading the file or sth
-    // or if the last expr in the file was a setd or something that returns a Null
-    println!("Running file: {}", filepath.display());
-    let mut res = sym("Null");
-    let exprs = expr_parser::expressions(&file_contents).unwrap();
-    // for line in reader.lines() {
-    for expr in exprs {
-        // match line {
-        // Ok(content) => {
-        //     if content.starts_with("//") || content.starts_with(";") || content.is_empty() {
-        //         continue;
-        //     }
-        // if let Ok(ex) = &expr_parser::Expr(&content) {
-        let mut stack = Expr::List(vec![]);
-        res = evaluate(&mut stack, ctx, &expr);
-        // } else {
-        // eprintln!("Error parsing a line: {:?}", content);
+        // Err(error) => {
+        // eprintln!("Error reading a line: {:?}", error);
         // }
+        // }
+        // }
+
+        Ok(res)
     }
-    // Err(error) => {
-    // eprintln!("Error reading a line: {:?}", error);
-    // }
-    // }
-    // }
-
-    Ok(res)
 }
 
-pub fn run(
-    mut rl: rustyline::Editor<ReplHelper, rustyline::history::FileHistory>,
-    mut ctx: Context2,
-) -> Result<()> {
-    let mut i = 1;
-
-    loop {
-        let prompt = format!("(In {}) := ", i);
-        rl.helper_mut().expect("No helper").colored_prompt = format!("\x1b[1;32m{prompt}\x1b[0m");
-
-        let line = rl.readline(&prompt); // read
-        match line {
-            Ok(l) => {
-                rl.add_history_entry(l.as_str()).unwrap(); // history
-                                                           // saving every line (even if slow, just until its more stable)
-                rl.save_history("history.txt").unwrap();
-
-                let exs = expr_parser::expressions(&l);
-
-                match exs {
-                    Ok(exprs) => {
-                        for expr in exprs {
-                            let mut stack = Expr::List(vec![]);
-                            let res = evaluate(&mut stack, &mut ctx, &expr);
-                            let in_i =
-                                expr_parser::Expr(format!("(setd (In {i}) {})", expr).as_str())
-                                    .unwrap();
-                            evaluate(&mut stack, &mut ctx, &in_i);
-                            let out_i =
-                                expr_parser::Expr(format!("(set (Out {i}) {})", res).as_str())
-                                    .unwrap();
-                            evaluate(&mut stack, &mut ctx, &out_i);
-
-                            println!("\x1B[1m(Out {i}) = {}\x1B[0m", res);
-
-                            i += 1;
-                        }
-                    }
-
-                    Err(err) => println!("Failed to parse: {}", err),
-                }
-            }
-            Err(ReadlineError::Interrupted) => {
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                break;
-            }
-            Err(err) => {
-                println!("Error: {:?}", err);
-            }
-        }
-    } // loop
-    Ok(())
-}
-
-fn main() -> Result<()> {
-    let h = ReplHelper {
-        highlighter: MatchingBracketHighlighter::new(),
-        colored_prompt: "".to_owned(),
-        validator: MatchingBracketValidator::new(),
-    };
-    let config = rustyline::Config::default();
-    let mut rl = Editor::with_config(config)?;
-    rl.set_max_history_size(10000).unwrap();
-    rl.set_helper(Some(h));
-    if rl.load_history("history.txt").is_err() {
-        println!("No previous history.");
-    }
-    let mut ctx = Context2 {
-        vars: HashMap::new(),
-    };
-
-    startup_attrs(&mut ctx);
-    run_file(&mut ctx, Path::new("lang/attrs.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/startup.sexp"))?;
-    run_file(&mut ctx, Path::new("lang/calculus.sexp"))?;
-    // run_file(&mut ctx, Path::new("lang/systems.sexp"))?;
-
-    run(rl, ctx)?;
-    Ok(())
-}
 
 pub fn evalparse(s: &str) -> Expr {
     let ex = expr_parser::Expr(s);
     match ex {
         Ok(expr) => {
-            let mut ctx = Context2 {
+            let mut ctx = Cas3VM {
                 vars: HashMap::new(),
             };
             let mut stack = Expr::List(vec![]);
@@ -1628,7 +1512,7 @@ pub fn evalparse(s: &str) -> Expr {
     }
 }
 
-pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
+pub fn ctx_evalparse(ctx: &mut Cas3VM, s: &str) -> Expr {
     let ex = expr_parser::Expr(s);
     match ex {
         Ok(expr) => {
@@ -1639,513 +1523,3 @@ pub fn ctx_evalparse(ctx: &mut Context2, s: &str) -> Expr {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_parser() {
-        assert_eq!(parse("(f (* *hi* *)  x)"), parse("(f x)"));
-    }
-
-    #[test]
-    fn test_pattern_matching() {
-        assert_eq!(evalparse("(matchq 1 (blank))"), sym("true"));
-        assert_eq!(evalparse("(matchq 1 (blank Int))"), sym("true"));
-        assert_eq!(evalparse("(matchq 1 (pattern x (blank)))"), sym("true"));
-        assert_eq!(evalparse("(matchq 1 (pattern x (blank Int)))"), sym("true"));
-        assert_eq!(
-            evalparse("(matchq 1 (pattern x (blank Sym)))"),
-            sym("false")
-        );
-        assert_eq!(
-            evalparse("(matchq ((k a) b) ((k (pattern x (blank Sym))) (pattern y (blank Sym))))"),
-            sym("true")
-        );
-        assert_eq!(
-            evalparse("(matchq ((k a) b) ((k (pattern x (blank))) (pattern y (blank))))"),
-            sym("true")
-        );
-        assert_eq!(
-            evalparse("(matchq (plus 1 2) (plus (blank) (blank)))"),
-            sym("true")
-        );
-
-        assert_eq!(evalparse("(matchq (list a b c) (blank))"), sym("true"));
-        assert_eq!(
-            evalparse("(matchq (list a b c) (pattern x (blank)))"),
-            sym("true")
-        );
-
-        assert_eq!(evalparse("(matchq (f (g 1)) (f (g (blank))))"), sym("true"));
-
-        // testing that patterns with the same name must equal the same matched expr
-        assert_eq!(
-            evalparse("(matchq (f a a) (f (pattern x (blank)) (pattern x (blank))))"),
-            sym("true")
-        );
-        assert_eq!(
-            evalparse("(matchq (f a b) (f (pattern x (blank)) (pattern x (blank))))"),
-            sym("false")
-        );
-
-        // nested patterns, head is pattern
-        assert_eq!(
-            evalparse("(matchq (foo x) ((pattern f (blank)) (pattern y (blank))))"),
-            sym("true")
-        );
-
-        // head matching
-        assert_eq!(
-            evalparse("(matchq (list x) (pattern x (blank list)))"),
-            sym("true")
-        );
-
-        // blank doesnt match the here, which is correct. triple_blank would match this
-        assert_eq!(evalparse("(matchq (f) (f (blank)))"), sym("false"));
-    }
-
-    #[test]
-    fn test_rules_and_replacement() {
-        assert_eq!(
-            evalparse("(replace ((k a) b) (rule ((k (pattern x (blank))) (pattern y (blank))) x))"),
-            sym("a")
-        );
-
-        // list of rules does first one that matches
-        assert_eq!(
-            evalparse("(replace x (List (rule a b) (rule x y)))"),
-            sym("y")
-        );
-        assert_eq!(
-            evalparse("(replace x (List (rule x y) (rule x z)))"),
-            sym("y")
-        );
-
-        // doesn't keep going
-        assert_eq!(
-            evalparse("(replace x (List (rule x y) (rule y z)))"),
-            sym("y")
-        );
-
-        // case where no rules apply
-        assert_eq!(
-            evalparse("(replace_all x (List (rule y a) (rule z b)))"),
-            sym("x")
-        );
-
-        // test for blank with head + nested List
-        assert_eq!(
-            evalparse(r#"(replace_all (List 1 1.5 Pi (List a 2)) (rule (blank Int) "hi"))"#),
-            expr_parser::Expr(r#"(List "hi" 1.5 Pi (List a "hi"))"#).unwrap()
-        );
-
-        assert_eq!(
-            evalparse("(replace_all (List x (power x 2) y z) (List (rule x 1)))"),
-            expr_parser::Expr("(List 1 (power 1 2) y z)").unwrap()
-        );
-
-        assert_eq!(
-            evalparse("(replace_all (List x (power x 2) y z) (List (rule x 1) (rule y 2)))"),
-            expr_parser::Expr("(List 1 (power 1 2) 2 z)").unwrap()
-        );
-
-        assert_eq!(
-            evalparse("(replace_all (plus 1 (pow x 2) (pow x 4)) (rule (pow x (pattern p (blank))) (f p)))"),
-            expr_parser::Expr("(plus 1 (f 2) (f 4))").unwrap()
-        );
-
-        let s = "(replace_repeated (List (f (f x)) (f x) (g (f x)) (f (g (f x)))) (List (rule (f (pattern x (blank))) x)))";
-        // todo test s above to give (List x x (g x) (g x))
-        assert_eq!(
-            evalparse(s),
-            expr_parser::Expr("(List x x (g x) (g x))").unwrap()
-        );
-        // (s k) is false, and k is true
-        // Combinator reduction of And for Tuples[{True, False}]
-        // in boolean logic, you need 3 things to "do everything"
-        // true, false, nand
-        // whats cool about combinators, is you only need 2 things
-        // s and k combinators. everything else is up to interpretation
-
-        let test_cases = vec![
-            ("((((s s) k) (s k)) (s k))", "(s k)"),
-            ("((((s s) k) (s k)) k)", "(s k)"),
-            ("((((s s) k) k) (s k))", "(s k)"),
-            ("((((s s) k) k) k)", "k"),
-        ];
-        let crules_str = "(List (rule (((s (pattern x (blank))) (pattern y (blank))) (pattern z (blank))) ((x z) (y z))) (rule ((k (pattern x (blank))) (pattern y (blank))) x))";
-        for (input, res) in test_cases.iter() {
-            assert_eq!(
-                evalparse(&format!("(rr {} {crules_str})", input)),
-                expr_parser::Expr(res).unwrap()
-            );
-        }
-
-        // let nand = "s[ s[ k[ s[ s[ s][s[k[k[k]]]]]]]][s]";
-        //            (s (s (k (s (s  s) (s (k (k k)))))))
-
-        // let nand = "(((s s) (s (k (k k)))) s)";
-        // let nand = "(((s s) (s (k (k k)))) s)";
-        // let nand = "(s (s (k (s (((s s) (s (k (k k)))))))) s)";
-        // let nand = "(((s (s (k (((s (s s)) (s (k (k k)))))))) s)";
-        // let a = "k";
-        // let b = "k";
-        // let s = format!("(({nand} {a}) {b})");
-        // println!("{}", s);
-    }
-
-    #[test]
-    fn list_ops() {
-        assert_eq!(
-            evalparse("(sameq (Part (f x y z) (List 1 2 3)) (List x y z))"),
-            sym("true")
-        );
-    }
-
-    #[test]
-    fn seqs_and_geeks() {
-        assert_eq!(
-            evalparse("(sameq (f (Sequence a b) c (Sequence d e)) (f a b c d e))"),
-            sym("true")
-        );
-
-        let mut ctx = Context2 {
-            vars: HashMap::new(),
-        };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        ctx_evalparse(
-            &mut ctx,
-            "(setd (listq (pattern x (blank))) (sameq list (head x)))",
-        );
-        println!("listq ctx {:?}", ctx);
-        assert_eq!(ctx_evalparse(&mut ctx, "(listq (list a b c))"), sym("true"));
-
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
-        // issue #2
-        assert_eq!(
-            ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
-            sym("true")
-        )
-    }
-
-    #[test]
-    fn new_pattern_matcher() {
-        let blank = list(vec!["blank"]);
-
-        let lhs = list(vec!["f", "a", "b"]);
-        let rhs = list(vec!["f", "blank"]);
-
-        let test_cases = vec![
-            (sym("1"), sym("1"), true),      // goes to "1" == "1" Sym, Sym arm
-            (sym("1"), blank.clone(), true), // Sym Sym arm with blank
-            (sym("1"), Expr::List(vec![sym("1")]), false), // Sym List -> false
-            (Expr::List(vec![sym("1")]), sym("1"), false), // List Sym
-            // (1) | (blank)
-            (Expr::List(vec![sym("1")]), blank.clone(), true), // List, sym, with blank
-            (lhs.clone(), rhs.clone(), false),                 // List, sym, with blank
-            // (lhs.clone(), list(vec!["f", "blank", "blank"]), true), // List, sym, with blank
-            (
-                lhs.clone(),
-                liste(vec![sym("f"), blank.clone(), blank.clone()]),
-                true,
-            ), // List, sym, with blank
-            (sym("f"), list(vec!["blank", "Sym"]), true),
-            (sym("f"), list(vec!["blank", "f"]), false),
-            (list(vec!["f", "x"]), list(vec!["blank", "f"]), true),
-            (list(vec!["f", "x"]), list(vec!["blank", "g"]), false),
-            (parse("(f (a b))"), parse("(f (blank))"), true),
-            (parse("(f (a b))"), parse("(f (blank a))"), true),
-            (parse("(f x)"), parse("((blank) (blank))"), true),
-            (parse("f"), parse("(pattern x (blank))"), true),
-            (parse("(f)"), parse("(pattern x (blank))"), true),
-            (parse("(f x)"), parse("((pattern x (blank)) (blank))"), true),
-            (
-                parse("(f a b c)"),
-                parse("(f (pattern x (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a b c)"),
-                parse("(f (pattern x (blank_seq)) (pattern y (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a a)"),
-                parse("(f (pattern x (blank_seq)) (pattern x (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a (g b))"),
-                parse("(f (pattern x (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a)"),
-                parse("(f (pattern x (blank_null_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a)"),
-                parse("(f (pattern x (blank_null_seq)) a)"),
-                true,
-            ),
-            (
-                parse("(f a b c a b)"),
-                parse("(f (pattern x (blank_seq)) c (pattern x (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f (a b) c a b)"),
-                parse("(f (pattern x (blank b)) (pattern y (blank_seq)))"),
-                false,
-            ),
-            (
-                parse("(f (a b) c a b)"),
-                parse("(f (pattern x (blank a)) (pattern y (blank_seq)))"),
-                true,
-            ),
-            (
-                parse("(f a b c d)"),
-                parse("(f (blank_seq) (pattern y (blank_seq)))"),
-                true,
-            ),
-            // fails todo fix blank_seq with head
-            (
-                parse("(f (a b) (a c) (b d))"),
-                parse("(f (pattern x (blank_seq a)))"),
-                false,
-            ),
-            (
-                parse("(f (a b) (a c) (b d))"),
-                parse("(f (pattern x (blank_seq a)) (b d))"),
-                true,
-            ),
-            // pos : Vec<usize> where are we in the pattern Expr
-            (
-                parse("(f (a b) (a c) (b d))"),
-                parse("(f (blank_seq a) (b d))"),
-                true,
-            ),
-            (
-                parse("(f (a b) (a c) (b d))"),
-                parse("(f (blank_seq a))"),
-                false,
-            ),
-        ];
-
-        // list(vec!["f", "a", "b", "c"]), list(vec!["f", sym("blank_sequence")])
-        for (i, (ex, pat, expected)) in test_cases.iter().enumerate() {
-            println!("testing case {i}: {ex} | {pat} ");
-            let pos = vec![];
-            let mut pos_map = HashMap::new();
-            let mut named_map = HashMap::new();
-            let m = my_match(ex.clone(), pat.clone(), &pos, &mut pos_map, &mut named_map);
-            let rebuilt_ex = final_rebuild_and_splice(pat.clone(), &vec![], &pos_map, &named_map);
-            // let rebuilt_ex = rebuild_and_splice(pat.clone(), &vec![], &pos_map, &named_map);
-            println!("rebuilt:{rebuilt_ex:?}\n\npos:\n{pos_map:?}\nnamed:\n{named_map:?}\n\n");
-
-            assert_eq!(m, *expected);
-
-            if *expected {
-                assert_eq!(rebuilt_ex, ex.clone());
-            }
-        }
-    }
-
-    /// https://github.com/anandijain/cas3.rs/issues/1
-    #[test]
-    fn issue_1() {
-        assert_eq!(
-            evalparse("(matchq (f a b 0 c) (f (blank_seq) 0 (blank_seq)))"),
-            sym("true")
-        )
-    }
-    #[test]
-    fn table_tests() {
-        let mut ctx = Context2 {
-            vars: HashMap::new(),
-        };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        ctx_evalparse(&mut ctx, "(set xs (List 1 2 3 4 5))");
-
-        let cases = vec![
-            ("(Table f 3)", "(List f f f)"),
-            ("(Table i (List i 3))", "(List 1 2 3)"),
-            ("(Table i (List i 2 4))", "(List 2 3 4)"),
-            ("(Table i (List i 1 6 2))", "(List 1 3 5)"),
-            ("(Table i (List i (List 1.5 3.5)))", "(List 1.5 3.5)"),
-            (
-                "(Table (List i j) (List i 2) (List j 2))",
-                "(List (List (List 1 1) (List 1 2)) (List (List 2 1) (List 2 2)))",
-            ),
-            (
-                "(Table (Part xs (List i (Plus i 1) (Plus i 2))) (List i (Plus (Length xs) -2)))",
-                "(List (List 1 2 3) (List 2 3 4) (List 3 4 5))",
-            ),
-        ];
-        for (lhs, rhs) in cases {
-            let res = ctx_evalparse(&mut ctx, lhs);
-            assert_eq!(res, expr_parser::Expr(rhs).unwrap());
-        }
-    }
-
-    #[test]
-    fn issue_2() {
-        let mut ctx = Context2 {
-            vars: HashMap::new(),
-        };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
-        assert_eq!(
-            ctx_evalparse(&mut ctx, "(sameq (Nest (f) x 2) ((f) ((f) x)))"),
-            sym("true")
-        )
-    }
-
-    #[test]
-    fn alternatives_test() {
-        let mut ctx = Context2 {
-            vars: HashMap::new(),
-        };
-        run_file(&mut ctx, Path::new("lang/attrs.sexp")).unwrap();
-        run_file(&mut ctx, Path::new("lang/startup.sexp")).unwrap();
-        let cases = vec![
-            ("(matchq a (Alternatives a b))", sym("true")),
-            ("(matchq (f a) (f (Alternatives a b)))", sym("true")),
-            (
-                "(matchq (f a b c) (Alternatives a (f (blank_seq))))",
-                sym("true"),
-            ),
-            (
-                "(matchq (f a b c) (Alternatives a (f (pattern xs (blank_seq)))))",
-                sym("true"),
-            ),
-            (
-                "(matchq (f a b c) (Alternatives a (f (blank_seq))))",
-                sym("true"),
-            ),
-            (
-                "(matchq (f) (Alternatives a (f (blank_seq))))",
-                sym("false"),
-            ),
-            // ("(matchq a (Alternatives a b))", sym("true")),
-        ];
-
-        for (c, e) in cases {
-            assert_eq!(ctx_evalparse(&mut ctx, c), e)
-        }
-    }
-}
-
-/*
-exprs/programs to make work
-1.
-
-(set x 1)
-x
-(set y 2)
-(+ x y) => (+ 1 2). I don't think i want/need to implement arithmetic yet
-2.
-k[x_][y_] := x
-(SetDelayed (k (pattern x (blank)) (pattern y (blank))) x)
-
-f[x_] := {x, x^2, x^3}
-f[y] # gives {x, x^2, x^3}
-(SetDelayed (f (pattern x (blank)) (list x (pow x 2) (pow x 3)))
-
-3.
-(matchq x x) # true
-(matchq x y) # false
-(matchq x (pattern (blank))) # true
-(matchq (list a) (pattern (blank))) # true
-
-4. (most important right now)
-SetDelayed[fib[Pattern[n, Blank[]]], Plus[fib[Plus[n, -1]], fib[Plus[n, -2]]]]]
-
-(set (fib 1) (fib 0))
-(set (fib 0) 1)
-(set_delayed (fib (pattern n (blank))) (plus (fib (minus n 1)) (fib (minus n 2))))
-(set_delayed (fib (pattern n (blank Int))) (plus (fib (minus n 1)) (fib (minus n 2))))
-(fib 5)
-
-okay so we make a new hashmap called DownValues that is a HashMap of symbol to list of exprs
-this list of expr is all the downvalues.
-so
-f[x_][y_] := x
-f[x_] := 1
-
-f[x][y] # 1
-
-k[x_][y_] := x
-k[x][y] # x
-
-so it does the recursive thing, doesn't find any pattern matching (k x), which it looks to find first, shown by the f example
-then goes out to see if there is a more nested pattern that matches, which is the k example
-
-
-one thing that mathematica does is it actually stores (fib 2, 3,... ) in the evaluation of fib(5)
-
-
-notes:
-currently this crashes the interpreter because it goes into an infinite loop (no fixed point)
-(set (f) (f f)
-(set (f f) (f))
-
-f[x_] := x
-f[1]
-
-(setd (f (pattern x (blank))) (f x))
-(f 1) so basically wh
-
-(f (list 1))
-
-
-------
-TODO actually make testing
-
-(set (a b) c)
-(a b) == c
-(set b 1)
-(a b) == (a 1)
-
-------
-need to make
-(set x (plus x 1))
-crash the program
-and
-(setd x (plus x 1)) not
-but (setd x (plus x 1)), (x) should crash the program
-
-
-
-f[x_]:=g[y_]:=y
-f[1] === Null # True
-but note that if you try to call g before f, then g is undefined
-so
-ff[x_]:=gg[y_]:=y
-gg[1] # gives gg[1]
-but then
-ff[1]
-gg[1] # now gives 1
-
-also note that
-x=1
-x=2
-works because Set is HoldFirst
-
-
-https://mathematica.stackexchange.com/questions/176732/can-a-symbol-have-more-than-one-ownvalue
-i will keep TableEntry.own as a list expr, but since I am not going to do conditional evaluation, it will only have one element
-if set manually by the user, through OwnValues[x] = ..., i panic if more than one
-
-one interesting thing is how to set Set attributes to HoldFirst and Setd before calling Set and Setd.
-maybe have to manually put in those DownValues of Attributes manually in rust and not in startup
-can also just hardcode it in evaluate to never evaluate the first argument of Set and the rest
-
-
-apply just replaces list with arg[1]
-apply[f, {a, b, c}] # f[a, b, c]
-
-
-*/
